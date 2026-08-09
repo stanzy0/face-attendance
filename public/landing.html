@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BioTrack — Biometric Face Verification & Attendance System</title>
+  <meta name="description" content="Military-grade biometric face verification and intelligent attendance management for secure organizational environments." />
+  <link rel="icon" href="assets/afcsc logo.png" type="image/png" />
+  <link rel="stylesheet" href="css/theme.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <link rel="stylesheet" href="css/landing.css" />
+</head>
+<body>
+  <div class="landing-page">
+    <!-- ============================================
+         NAVIGATION
+    ============================================ -->
+    <nav class="nav" id="nav" role="navigation" aria-label="Main navigation">
+      <div class="nav-inner">
+        <a href="landing.html" class="nav-brand" aria-label="BioTrack Home">
+          <img src="assets/afcsc logo.png" alt="AFCSC" class="brand-logo" />
+          <span class="brand-text">BioTrack</span>
+          <img src="assets/army logo.png" alt="Army" class="brand-logo" />
+        </a>
+        <ul class="nav-links">
+          <li><a href="#home">Home</a></li>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#how-it-works">How It Works</a></li>
+          <li><a href="#departments">Departments</a></li>
+          <li><a href="#attendance-intelligence">Attendance Intelligence</a></li>
+          <li><a href="#security">Security</a></li>
+        </ul>
+        <a href="index.html" class="btn btn-accent nav-cta">Access System</a>
+        <button class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Mobile Navigation -->
+    <div class="nav-mobile" id="navMobile" role="dialog" aria-modal="true" aria-label="Mobile navigation">
+      <button class="nav-mobile-close" id="navMobileClose" aria-label="Close menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+      <a href="#home" class="nav-mobile-link">Home</a>
+      <a href="#features" class="nav-mobile-link">Features</a>
+      <a href="#how-it-works" class="nav-mobile-link">How It Works</a>
+      <a href="#departments" class="nav-mobile-link">Departments</a>
+      <a href="#attendance-intelligence" class="nav-mobile-link">Attendance Intelligence</a>
+      <a href="#security" class="nav-mobile-link">Security</a>
+      <a href="index.html" class="btn btn-accent">Access System</a>
+    </div>
+
+    <!-- ============================================
+         HERO SECTION
+    ============================================ -->
+    <section class="hero" id="home">
+      <div class="hero-bg" aria-hidden="true"></div>
+      <div class="hero-grid" aria-hidden="true"></div>
+      <div class="hero-scan-line" aria-hidden="true"></div>
+      <div class="hero-inner">
+        <!-- Left Content -->
+        <div class="hero-content">
+          <div class="hero-badge">
+            <span class="hero-badge-dot" aria-hidden="true"></span>
+            Secure Biometric Platform
+          </div>
+          <h1 class="hero-title">
+            Smart Identity.<br />
+            <span class="hero-title-highlight">Secure Attendance.</span>
+          </h1>
+          <p class="hero-description">
+            Biometric face verification and intelligent attendance management built for secure organizational environments. Verify personnel identity, validate location, and maintain accurate records with precision.
+          </p>
+          <div class="hero-actions">
+            <a href="index.html" class="btn btn-accent btn-lg">Access BioTrack</a>
+            <a href="#features" class="btn btn-outline btn-lg">Explore Features</a>
+          </div>
+        </div>
+
+        <!-- Right Visual - Biometric Verification Interface -->
+        <div class="hero-visual" aria-hidden="true">
+          <div class="biometric-card">
+            <div class="biometric-header">
+              <div class="biometric-header-left">
+                <div class="biometric-status-dot"></div>
+                <span class="biometric-status-text">Identity Verified</span>
+              </div>
+              <span class="biometric-time" id="biometricTime">--:--:--</span>
+            </div>
+            <div class="biometric-body">
+              <div class="face-frame">
+                <div class="face-silhouette"></div>
+                <div class="scan-frame"></div>
+                <div class="scan-line"></div>
+                <span class="face-point"></span>
+                <span class="face-point"></span>
+                <span class="face-point"></span>
+                <span class="face-point"></span>
+                <span class="face-point"></span>
+                <span class="face-point"></span>
+              </div>
+              <div class="biometric-stats">
+                <div class="biometric-stat">
+                  <div class="biometric-stat-label">Match Confidence</div>
+                  <div class="biometric-stat-value success">98.7%</div>
+                </div>
+                <div class="biometric-stat">
+                  <div class="biometric-stat-label">Location</div>
+                  <div class="biometric-stat-value success">Verified</div>
+                </div>
+                <div class="biometric-stat">
+                  <div class="biometric-stat-label">Status</div>
+                  <div class="biometric-stat-value">Present</div>
+                </div>
+                <div class="biometric-stat">
+                  <div class="biometric-stat-label">Record</div>
+                  <div class="biometric-stat-value success">Logged</div>
+                </div>
+              </div>
+            </div>
+            <div class="biometric-footer">
+              <svg class="biometric-footer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <span class="biometric-footer-text">Attendance Recorded</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================
+         TRUST / SECURITY STRIP
+    ============================================ -->
+    <section class="trust-strip" aria-label="Core capabilities">
+      <div class="trust-strip-inner">
+        <div class="trust-item">
+          <div class="trust-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="trust-content">
+            <h4>Biometric Verification</h4>
+            <p>Personnel identity confirmed via facial recognition</p>
+          </div>
+        </div>
+        <div class="trust-item">
+          <div class="trust-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+              <circle cx="12" cy="10" r="3"/>
+            </svg>
+          </div>
+          <div class="trust-content">
+            <h4>Location Validation</h4>
+            <p>Attendance recorded only within approved boundaries</p>
+          </div>
+        </div>
+        <div class="trust-item">
+          <div class="trust-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <div class="trust-content">
+            <h4>Real-Time Attendance</h4>
+            <p>Instant check-in with live verification feedback</p>
+          </div>
+        </div>
+        <div class="trust-item">
+          <div class="trust-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
+          <div class="trust-content">
+            <h4>Secure Records</h4>
+            <p>Reliable attendance data with controlled access</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================
+         DEPARTMENT IMAGERY
+    ============================================ -->
+    <section class="department-section" id="departments" aria-labelledby="department-title">
+      <div class="department-inner">
+        <div class="department-header fade-up">
+          <h2 class="department-title" id="department-title">Department of Land Warfare</h2>
+          <p class="department-description">
+            BioTrack provides a modern biometric verification and attendance platform designed to support secure and accountable organizational environments.
+          </p>
+        </div>
+        <div class="department-gallery fade-up">
+          <div class="department-gallery-item featured" tabindex="0" role="img" aria-label="Official Department of Land Warfare imagery — primary featured photograph">
+            <img src="assets/department/department-01.jpg" alt="Department of Land Warfare — official imagery" loading="lazy" />
+            <div class="department-gallery-caption">Department of Land Warfare</div>
+          </div>
+          <div class="department-gallery-item side" tabindex="0" role="img" aria-label="Official Department of Land Warfare supporting imagery">
+            <img src="assets/department/department-02.jpg" alt="Department of Land Warfare — operational environment" loading="lazy" />
+            <div class="department-gallery-caption">Department of Land Warfare</div>
+          </div>
+          <div class="department-gallery-item side" tabindex="0" role="img" aria-label="Official Department of Land Warfare additional imagery">
+            <img src="assets/department/department-03.jpg" alt="Department of Land Warfare — official documentation" loading="lazy" />
+            <div class="department-gallery-caption">Department of Land Warfare</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================
+         FEATURES SECTION
+    ============================================ -->
+    <section class="section" id="features">
+      <div class="section-inner">
+        <div class="section-header fade-up">
+          <span class="section-label">Capabilities</span>
+          <h2 class="section-title">Built for Secure Attendance</h2>
+          <p class="section-description">
+            A complete biometric attendance platform designed for precision, accountability, and secure organizational management.
+          </p>
+        </div>
+        <div class="features-grid">
+          <!-- Feature 1 -->
+          <div class="feature-card fade-up">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">Face Verification</h3>
+            <p class="feature-description">Verify personnel identity using biometric facial recognition with advanced matching algorithms.</p>
+          </div>
+          <!-- Feature 2 -->
+          <div class="feature-card fade-up">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">Location Verification</h3>
+            <p class="feature-description">Ensure attendance is recorded only within approved office boundaries using GPS validation.</p>
+          </div>
+          <!-- Feature 3 -->
+          <div class="feature-card fade-up">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">Real-Time Analytics</h3>
+            <p class="feature-description">Monitor attendance patterns and organizational activity in real time with live dashboards.</p>
+          </div>
+          <!-- Feature 4 -->
+          <div class="feature-card fade-up">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">Secure Records</h3>
+            <p class="feature-description">Maintain reliable attendance records with controlled access and full auditability.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================
+         HOW IT WORKS
+    ============================================ -->
+    <section class="section how-it-works" id="how-it-works">
+      <div class="section-inner">
+        <div class="section-header fade-up">
+          <span class="section-label">Process</span>
+          <h2 class="section-title">How It Works</h2>
+          <p class="section-description">
+            Three precise steps to secure, verified attendance recording.
+          </p>
+        </div>
+        <div class="steps-grid">
+          <div class="step fade-up">
+            <div class="step-number" aria-hidden="true">01</div>
+            <h3 class="step-title">Verify Identity</h3>
+            <p class="step-description">The system detects and verifies the user's face against registered biometric data.</p>
+          </div>
+          <div class="step fade-up">
+            <div class="step-number" aria-hidden="true">02</div>
+            <h3 class="step-title">Confirm Location</h3>
+            <p class="step-description">The system confirms that the user is within the approved office perimeter using GPS.</p>
+          </div>
+          <div class="step fade-up">
+            <div class="step-number" aria-hidden="true">03</div>
+            <h3 class="step-title">Record Attendance</h3>
+            <p class="step-description">Once verification succeeds, attendance is securely recorded with timestamp and location.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================
+         ANALYTICS PREVIEW
+    ============================================ -->
+    <section class="section analytics-preview" id="attendance-intelligence">
+      <div class="section-inner">
+        <div class="section-header fade-up">
+          <span class="section-label">Dashboard Preview</span>
+          <h2 class="section-title">Attendance Intelligence</h2>
+          <p class="section-description">
+            A glimpse into the BioTrack monitoring interface. Real-time insights, organized data, and complete accountability.
+          </p>
+        </div>
+        <div class="analytics-mockup fade-up">
+          <div class="analytics-mockup-header">
+            <span class="analytics-mockup-title">BioTrack Dashboard — Today's Overview</span>
+            <div class="analytics-mockup-actions" aria-hidden="true">
+              <span class="analytics-mockup-dot"></span>
+              <span class="analytics-mockup-dot"></span>
+              <span class="analytics-mockup-dot"></span>
+            </div>
+          </div>
+          <div class="analytics-mockup-body">
+            <!-- Chart -->
+            <div>
+              <div class="analytics-chart" aria-label="Weekly attendance chart showing present and absent counts">
+                <div class="chart-bars" aria-hidden="true">
+                  <div class="chart-bar"></div>
+                  <div class="chart-bar"></div>
+                  <div class="chart-bar"></div>
+                  <div class="chart-bar"></div>
+                  <div class="chart-bar"></div>
+                  <div class="chart-bar"></div>
+                  <div class="chart-bar"></div>
+                </div>
+              </div>
+            </div>
+            <!-- Sidebar Stats -->
+            <div class="analytics-sidebar">
+              <div class="analytics-stat-card">
+                <div class="analytics-stat-label">Present Today</div>
+                <div class="analytics-stat-value">42</div>
+                <div class="analytics-stat-change">+4 from yesterday</div>
+              </div>
+              <div class="analytics-stat-card">
+                <div class="analytics-stat-label">Verification Rate</div>
+                <div class="analytics-stat-value">98.7%</div>
+                <div class="analytics-stat-change">+1.2% this week</div>
+              </div>
+              <div class="analytics-activity">
+                <div class="analytics-activity-title">Recent Activity</div>
+                <div class="activity-item">
+                  <span class="activity-dot success" aria-hidden="true"></span>
+                  <span class="activity-text">Staff ID 1042 verified — Check-in</span>
+                  <span class="activity-time">08:42</span>
+                </div>
+                <div class="activity-item">
+                  <span class="activity-dot success" aria-hidden="true"></span>
+                  <span class="activity-text">Staff ID 1089 verified — Check-in</span>
+                  <span class="activity-time">08:38</span>
+                </div>
+                <div class="activity-item">
+                  <span class="activity-dot warning" aria-hidden="true"></span>
+                  <span class="activity-text">Staff ID 1023 — Location outside zone</span>
+                  <span class="activity-time">08:15</span>
+                </div>
+                <div class="activity-item">
+                  <span class="activity-dot success" aria-hidden="true"></span>
+                  <span class="activity-text">Staff ID 1077 verified — Check-in</span>
+                  <span class="activity-time">08:02</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================
+         SECURITY SECTION
+    ============================================ -->
+    <section class="section security-section" id="security">
+      <div class="section-inner">
+        <div class="section-header fade-up">
+          <span class="section-label">Protection</span>
+          <h2 class="section-title">Security at Every Step</h2>
+          <p class="section-description">
+            Designed for secure identity verification with layered protection principles.
+          </p>
+        </div>
+        <div class="security-grid">
+          <div class="security-item fade-up">
+            <div class="security-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <h3 class="security-title">Biometric Verification</h3>
+            <p class="security-description">Personnel identity confirmed through facial recognition before any attendance action.</p>
+          </div>
+          <div class="security-item fade-up">
+            <div class="security-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+            </div>
+            <h3 class="security-title">Location Validation</h3>
+            <p class="security-description">GPS-based perimeter enforcement ensures records are created only at approved sites.</p>
+          </div>
+          <div class="security-item fade-up">
+            <div class="security-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <h3 class="security-title">Role-Based Access</h3>
+            <p class="security-description">Administrative functions are protected by Firebase Authentication with defined roles.</p>
+          </div>
+          <div class="security-item fade-up">
+            <div class="security-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+                <polyline points="10 9 9 9 8 9"/>
+              </svg>
+            </div>
+            <h3 class="security-title">Audit Tracking</h3>
+            <p class="security-description">Every verification and attendance event is logged with timestamp, location, and user identity.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================
+         CALL TO ACTION
+    ============================================ -->
+    <section class="cta-section">
+      <div class="cta-inner fade-up">
+        <h2 class="cta-title">Ready to Verify with Confidence?</h2>
+        <p class="cta-description">
+          Access the BioTrack platform to manage biometric verification and attendance with precision and accountability.
+        </p>
+        <a href="index.html" class="btn btn-accent btn-lg">Access BioTrack</a>
+      </div>
+    </section>
+
+    <!-- ============================================
+         FOOTER
+    ============================================ -->
+    <footer class="footer" role="contentinfo">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <div class="footer-logo">
+            <img src="assets/afcsc logo.png" alt="AFCSC" class="footer-logo-img" />
+            <span class="footer-logo-text">BioTrack</span>
+            <img src="assets/army logo.png" alt="Army" class="footer-logo-img" />
+          </div>
+          <p class="footer-brand-text">
+            Biometric Face Verification & Attendance System
+          </p>
+          <p class="footer-org">Department of Land Warfare</p>
+        </div>
+        <div>
+          <h4 class="footer-heading">Platform</h4>
+          <ul class="footer-links">
+            <li><a href="index.html">Employee Check-In</a></li>
+            <li><a href="admin.html">Admin Dashboard</a></li>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#how-it-works">How It Works</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="footer-heading">Security</h4>
+          <ul class="footer-links">
+            <li><a href="#security">Security Principles</a></li>
+            <li><a href="#attendance-intelligence">Dashboard</a></li>
+            <li><a href="#home">Privacy</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="footer-heading">System</h4>
+          <ul class="footer-links">
+            <li><a href="index.html">System Access</a></li>
+            <li><a href="landing.html">Version 2.0</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>BioTrack v2.0 — Military-Grade Biometric Platform</span>
+        <span>Department of Land Warfare</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="landing.js"></script>
+</body>
+</html>

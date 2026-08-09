@@ -1,0 +1,487 @@
+/* ============================================
+   BioTrack Admin Login
+   Premium Military Split-Screen Design
+   ============================================ */
+
+/* === Login Page Wrapper === */
+.admin-login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background-color: var(--bg-primary, #1B2416);
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-login-page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(75, 83, 32, 0.2), transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(85, 107, 47, 0.12), transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(200, 166, 70, 0.04), transparent 60%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.admin-login-page::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(245, 245, 220, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 245, 220, 0.02) 1px, transparent 1px);
+  background-size: 60px 60px;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* === Login Container === */
+.admin-login-container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1200px;
+  min-height: 680px;
+  display: flex;
+  border-radius: var(--border-radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+}
+
+/* === Left Panel === */
+.admin-login-left {
+  width: 45%;
+  min-width: 320px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--space-10) var(--space-8);
+  background: var(--bg-surface);
+  position: relative;
+  z-index: 1;
+}
+
+.admin-login-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-10);
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-xl);
+  letter-spacing: 0.04em;
+}
+
+.admin-login-brand-img {
+  height: 36px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.admin-login-brand-text {
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-xl);
+  letter-spacing: 0.04em;
+}
+
+.admin-login-heading {
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+  letter-spacing: -0.01em;
+  line-height: var(--line-height-tight);
+}
+
+.admin-login-subtitle {
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-8);
+  line-height: var(--line-height-relaxed);
+  max-width: 360px;
+}
+
+/* === Login Form === */
+.admin-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.form-field-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.form-field-input-wrapper {
+  position: relative;
+}
+
+.form-field-input {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  background: rgba(245, 245, 220, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  transition: all var(--transition-fast);
+  outline: none;
+}
+
+.form-field-input::placeholder {
+  color: var(--text-muted);
+}
+
+.form-field-input:hover {
+  border-color: var(--border-color-light);
+}
+
+.form-field-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(200, 166, 70, 0.15);
+  background: rgba(245, 245, 220, 0.07);
+}
+
+.form-field-input.error {
+  border-color: var(--color-danger);
+}
+
+.form-field-input.error:focus {
+  box-shadow: 0 0 0 3px rgba(139, 30, 30, 0.15);
+}
+
+.form-field-error {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger-light);
+  margin-top: var(--space-1);
+  display: none;
+}
+
+.form-field-error.visible {
+  display: block;
+}
+
+/* === Password Toggle === */
+.password-toggle {
+  position: absolute;
+  right: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--border-radius-sm);
+  transition: color var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.password-toggle:hover {
+  color: var(--text-primary);
+}
+
+.password-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* === Form Options === */
+.form-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+}
+
+.form-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.form-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.form-forgot {
+  color: var(--color-accent);
+  text-decoration: none;
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition-fast);
+}
+
+.form-forgot:hover {
+  color: var(--color-accent-light);
+  text-decoration: underline;
+}
+
+/* === Submit Button === */
+.admin-login-submit {
+  width: 100%;
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--border-radius-md);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-dark));
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-sm), 0 0 0 1px rgba(168, 138, 50, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-login-submit::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.admin-login-submit:hover:not(:disabled)::after {
+  opacity: 1;
+}
+
+.admin-login-submit:hover:not(:disabled) {
+  box-shadow: var(--shadow-md), var(--shadow-glow);
+  transform: translateY(-1px);
+}
+
+.admin-login-submit:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.admin-login-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.admin-login-submit .spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(27, 36, 22, 0.2);
+  border-top-color: var(--text-inverse);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* === Right Panel === */
+.admin-login-right {
+  width: 55%;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+}
+
+.admin-login-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.admin-login-image-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(27, 36, 22, 0.3) 0%,
+    rgba(27, 36, 22, 0.6) 60%,
+    rgba(27, 36, 22, 0.9) 100%
+  );
+  pointer-events: none;
+}
+
+.admin-login-image-content {
+  position: relative;
+  z-index: 1;
+  padding: var(--space-8);
+  width: 100%;
+}
+
+.admin-login-image-title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-2);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.admin-login-image-subtitle {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-accent);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* === Status Message === */
+.admin-login-status {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-sm);
+  display: none;
+}
+
+.admin-login-status.visible {
+  display: block;
+}
+
+.admin-login-status.error {
+  background: rgba(139, 30, 30, 0.15);
+  border: 1px solid rgba(139, 30, 30, 0.3);
+  color: var(--color-danger-light);
+}
+
+.admin-login-status.success {
+  background: rgba(46, 139, 87, 0.15);
+  border: 1px solid rgba(46, 139, 87, 0.3);
+  color: var(--color-success-light);
+}
+
+/* === Footer === */
+.admin-login-footer {
+  margin-top: var(--space-6);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.admin-login-footer a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.admin-login-footer a:hover {
+  text-decoration: underline;
+}
+
+/* === Responsive === */
+@media (max-width: 1024px) {
+  .admin-login-left {
+    padding: var(--space-8) var(--space-6);
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-login-container {
+    flex-direction: column;
+    max-width: 480px;
+    min-height: auto;
+  }
+
+  .admin-login-left {
+    width: 100%;
+    min-width: auto;
+    padding: var(--space-8) var(--space-6);
+    order: 1;
+  }
+
+  .admin-login-right {
+    width: 100%;
+    height: 240px;
+    min-height: 240px;
+    order: 2;
+  }
+
+  .admin-login-image-content {
+    padding: var(--space-6);
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-login-page {
+    padding: var(--space-4);
+  }
+
+  .admin-login-left {
+    padding: var(--space-6) var(--space-4);
+  }
+
+  .admin-login-right {
+    height: 200px;
+    min-height: 200px;
+  }
+
+  .form-options {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+}
+
+@media (max-width: 390px) {
+  .admin-login-left {
+    padding: var(--space-5) var(--space-3);
+  }
+
+  .admin-login-right {
+    height: 180px;
+    min-height: 180px;
+  }
+}
+
+/* === Accessibility === */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Focus visible */
+.admin-login-page a:focus-visible,
+.admin-login-page button:focus-visible,
+.admin-login-page input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--border-radius-sm);
+}

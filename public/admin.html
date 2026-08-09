@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>BioTrack - Admin Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Load face-api.js - local file first (included in deployment), fallback to CDN -->
+<script src="face-api.min.js"></script>
+<script>
+  if (typeof faceapi === 'undefined') {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"><\/script>');
+  }
+</script>
+<!-- Firebase SDKs must load before our scripts -->
+<script defer src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+<!-- Export libraries -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.32/jspdf.plugin.autotable.min.js"></script>
+<!-- Load firebase config and helpers BEFORE main script -->
+<script defer src="firebase-config.js"></script>
+<script defer src="admin-helpers.js"></script>
+<!-- Stylesheets -->
+<link rel="icon" href="assets/afcsc logo.png" type="image/png" />
+<link rel="stylesheet" href="css/absence-styles.css">
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/admin-login.css">
+<link rel="stylesheet" href="css/admin-dashboard.css">
+<script defer src="script.js"></script>
+<script defer src="admin-login.js"></script>
+<script defer src="admin-dashboard.js"></script>
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="adminLoginScreen" class="admin-login-page">
+    <div class="admin-login-container">
+      <!-- Left Panel: Login Form -->
+      <div class="admin-login-left">
+        <a href="landing.html" class="admin-login-brand" aria-label="BioTrack Home">
+          <img src="assets/afcsc logo.png" alt="AFCSC" class="admin-login-brand-img" />
+          <span class="admin-login-brand-text">BioTrack</span>
+          <img src="assets/army logo.png" alt="Army" class="admin-login-brand-img" />
+        </a>
+
+        <h1 class="admin-login-heading">Welcome back.</h1>
+        <p class="admin-login-subtitle">Secure administrator access to biometric attendance intelligence.</p>
+
+        <form id="adminLoginForm" class="admin-login-form" autocomplete="off">
+          <div class="form-field">
+            <label class="form-field-label" for="adminEmail">Email / Admin ID</label>
+            <input
+              id="adminEmail"
+              type="email"
+              class="form-field-input"
+              placeholder="admin@organization.gov"
+              autocomplete="email"
+            />
+            <span class="form-field-error" id="adminEmailError"></span>
+          </div>
+
+          <div class="form-field">
+            <label class="form-field-label" for="adminPassword">Password</label>
+            <div class="form-field-input-wrapper">
+              <input
+                id="adminPassword"
+                type="password"
+                class="form-field-input"
+                placeholder="Enter your password"
+                autocomplete="current-password"
+              />
+              <button
+                type="button"
+                id="passwordToggle"
+                class="password-toggle"
+                aria-label="Show password"
+                title="Show password"
+              >
+                <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg class="eye-off-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                  <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+              </button>
+            </div>
+            <span class="form-field-error" id="adminPasswordError"></span>
+          </div>
+
+          <div class="form-options">
+            <label class="form-checkbox">
+              <input type="checkbox" id="rememberMe" />
+              <span>Remember me</span>
+            </label>
+            <a href="#" class="form-forgot">Forgot password?</a>
+          </div>
+
+          <button type="submit" id="adminSignInBtn" class="admin-login-submit">
+            Sign In
+          </button>
+
+          <div id="adminStatus" class="admin-login-status"></div>
+        </form>
+
+        <div class="admin-login-footer">
+          <a href="index.html">Employee check-in</a>
+        </div>
+      </div>
+
+      <!-- Right Panel: Department Image -->
+      <div class="admin-login-right" aria-hidden="true">
+        <img
+          class="admin-login-image"
+          src="assets/department/department-01.jpg"
+          alt="Department of Land Warfare"
+        />
+        <div class="admin-login-image-overlay"></div>
+        <div class="admin-login-image-content">
+          <div class="admin-login-image-title">BioTrack</div>
+          <div class="admin-login-image-subtitle">Secure Biometric Operations</div>
+          <div style="font-size:0.7rem;color:var(--text-muted);margin-top:var(--space-2);letter-spacing:0.08em;text-transform:uppercase;">Department of Land Warfare</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Dashboard Shell (hidden until login) -->
+  <div id="adminDashboardScreen" class="admin-shell hidden">
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="adminSidebar">
+      <div class="admin-sidebar-brand">
+        <img src="assets/afcsc logo.png" alt="AFCSC" class="admin-sidebar-brand-img" />
+        <div class="admin-sidebar-brand-text">
+          <div class="admin-sidebar-brand-name">BioTrack</div>
+          <div class="admin-sidebar-brand-tag">Admin Console</div>
+        </div>
+      </div>
+
+      <nav class="admin-nav" aria-label="Admin navigation">
+        <div class="admin-nav-section">Main</div>
+        <a href="#" class="admin-nav-item active" data-section="dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          Dashboard
+        </a>
+        <a href="#" class="admin-nav-item" data-section="analytics">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Analytics
+        </a>
+        <a href="#" class="admin-nav-item" data-section="attendance">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Attendance
+        </a>
+        <a href="#" class="admin-nav-item" data-section="employees">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Employees
+        </a>
+
+        <div class="admin-nav-section" style="margin-top:var(--space-4);">Management</div>
+        <a href="#" class="admin-nav-item" data-section="register">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0;"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+          Register Employee
+        </a>
+        <a href="#" class="admin-nav-item" data-section="reports">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          Reports
+        </a>
+      </nav>
+
+      <div class="admin-nav-footer">
+        <div class="admin-nav-status">
+          <span class="admin-nav-status-dot" aria-hidden="true"></span>
+          <span>Firebase Connected</span>
+        </div>
+        <div class="admin-admin-profile">
+          <div class="admin-admin-avatar" aria-hidden="true">A</div>
+          <div class="admin-admin-info">
+            <div class="admin-admin-name">Administrator</div>
+            <div class="admin-admin-role">Admin</div>
+          </div>
+        </div>
+        <button id="adminSignOutBtnNav" class="admin-admin-signout">Sign Out</button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="admin-main">
+      <button class="admin-drawer-toggle" id="adminDrawerToggle" aria-label="Open menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <div class="admin-drawer-overlay" id="adminDrawerOverlay"></div>
+      <header class="admin-header">
+        <div>
+          <div class="admin-header-brand">
+            <img src="assets/afcsc logo.png" alt="AFCSC" class="admin-header-logo" />
+            <span class="admin-header-brand-text">BioTrack</span>
+            <img src="assets/army logo.png" alt="Army" class="admin-header-logo" />
+          </div>
+          <h1 class="admin-header-title" id="adminPageTitle">Dashboard</h1>
+          <p class="admin-header-subtitle" id="adminPageSubtitle">Overview of biometric attendance activity</p>
+        </div>
+        <div class="admin-header-actions">
+          <span class="admin-header-date" id="adminHeaderDate"></span>
+          <div class="admin-header-status">
+            <span class="admin-header-status-dot" aria-hidden="true"></span>
+            <span class="admin-header-status-text">System Online</span>
+          </div>
+          <button id="adminSignOutBtnHeader" class="btn btn-sm btn-outline">Sign Out</button>
+        </div>
+      </header>
+
+      <div class="admin-content">
+         <!-- Dashboard Section -->
+         <section id="section-dashboard" class="admin-section">
+         </section>
+
+         <!-- Analytics Section -->
+         <section id="section-analytics" class="admin-section hidden" hidden>
+          <div class="analytics-container">
+            <div class="analytics-header">
+              <div>
+                <h1 class="analytics-title">Analytics</h1>
+                <p class="analytics-subtitle">Detailed attendance and workforce intelligence</p>
+              </div>
+              <div class="analytics-actions">
+                <button id="analyticsExportBtn" class="btn btn-accent">Export Report</button>
+              </div>
+            </div>
+
+            <div class="analytics-filters">
+              <div class="analytics-filter-group">
+                <label class="analytics-filter-label">Date Range</label>
+                <select id="analyticsPeriod" class="form-input">
+                  <option value="7days">Last 7 Days</option>
+                  <option value="30days">Last 30 Days</option>
+                  <option value="90days">Last 90 Days</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+                <div id="analyticsCustomRange" class="hidden" style="display:flex;gap:var(--space-2);align-items:center;margin-top:var(--space-2);">
+                  <input type="date" id="analyticsStartDate" class="form-input" style="width:auto;" />
+                  <span class="text-muted">to</span>
+                  <input type="date" id="analyticsEndDate" class="form-input" style="width:auto;" />
+                  <button id="analyticsApplyCustom" class="btn btn-sm btn-primary">Apply</button>
+                </div>
+              </div>
+              <div class="analytics-filter-group">
+                <label class="analytics-filter-label">Department</label>
+                <select id="analyticsDeptFilter" class="form-input">
+                  <option value="">All Departments</option>
+                </select>
+              </div>
+              <div class="analytics-filter-group">
+                <label class="analytics-filter-label">Actions</label>
+                <button id="analyticsResetBtn" class="btn btn-outline btn-sm">Reset Filters</button>
+              </div>
+            </div>
+
+            <div id="analyticsKpiCards" class="analytics-kpi-grid"></div>
+
+            <div class="analytics-charts-row">
+              <div class="analytics-chart-card analytics-chart-large">
+                <h3 class="analytics-chart-title">Attendance Performance</h3>
+                <div id="analyticsPerformanceChart" class="analytics-chart-area"></div>
+              </div>
+              <div class="analytics-chart-card">
+                <h3 class="analytics-chart-title">Department Performance</h3>
+                <div id="analyticsDeptChart" class="analytics-chart-area"></div>
+              </div>
+            </div>
+
+            <div class="analytics-charts-row">
+              <div class="analytics-chart-card">
+                <h3 class="analytics-chart-title">Daily Attendance</h3>
+                <div id="analyticsDailyChart" class="analytics-chart-area"></div>
+              </div>
+              <div class="analytics-chart-card">
+                <h3 class="analytics-chart-title">Verification Analytics</h3>
+                <div id="analyticsVerificationChart" class="analytics-chart-area"></div>
+              </div>
+            </div>
+
+            <div class="analytics-charts-row">
+              <div class="analytics-chart-card">
+                <h3 class="analytics-chart-title">Location Intelligence</h3>
+                <div id="analyticsLocationChart" class="analytics-chart-area"></div>
+              </div>
+              <div class="analytics-chart-card">
+                <h3 class="analytics-chart-title">Peak Attendance Times</h3>
+                <div id="analyticsPeakChart" class="analytics-chart-area"></div>
+              </div>
+            </div>
+
+            <div class="analytics-chart-card analytics-full-width">
+              <h3 class="analytics-chart-title">Attendance Trend Comparison</h3>
+              <div id="analyticsTrendComparison" class="analytics-chart-area"></div>
+            </div>
+
+            <div class="analytics-chart-card analytics-full-width">
+              <h3 class="analytics-chart-title">Employee Insights</h3>
+              <div class="analytics-employee-controls">
+                <input type="text" id="analyticsEmployeeSearch" class="form-input" placeholder="Search employees..." style="width:240px;" />
+                <select id="analyticsEmployeeDeptFilter" class="form-input" style="width:auto;">
+                  <option value="">All Departments</option>
+                </select>
+              </div>
+              <div id="analyticsEmployeeTable" class="table-container"></div>
+            </div>
+          </div>
+        </section>
+
+         <!-- Attendance Section -->
+          <section id="section-attendance" class="admin-section hidden" hidden>
+            <div class="attendance-workspace">
+              <!-- Header -->
+              <div class="attendance-header">
+                <div class="attendance-header-title-group">
+                  <h4 class="attendance-title">Attendance Management</h4>
+                  <p class="attendance-subtitle">Monitor, review and manage biometric attendance activity</p>
+                </div>
+                <div class="attendance-date-indicator">
+                  <span id="attendanceDateIndicator" class="attendance-date-text">Today</span>
+                </div>
+              </div>
+
+              <!-- KPI Summary -->
+              <div id="attendanceKpiCards" class="attendance-kpi-grid">
+                <div class="skeleton-kpi"></div>
+                <div class="skeleton-kpi"></div>
+                <div class="skeleton-kpi"></div>
+                <div class="skeleton-kpi"></div>
+                <div class="skeleton-kpi"></div>
+              </div>
+
+              <!-- Filters -->
+              <div class="attendance-filters">
+                <div class="attendance-filter-row">
+                  <input type="text" id="attendanceSearch" class="form-input" placeholder="Search employee ID or name..." style="width:220px;" />
+                  <select id="attendanceDeptFilter" class="form-input" style="width:auto;">
+                    <option value="">All Departments</option>
+                  </select>
+                  <select id="attendanceStatusFilter" class="form-input" style="width:auto;">
+                    <option value="">All Status</option>
+                    <option value="verified">Verified</option>
+                    <option value="late">Late</option>
+                    <option value="absent">Absent</option>
+                    <option value="blocked">Blocked</option>
+                  </select>
+                  <select id="attendanceLocationFilter" class="form-input" style="width:auto;">
+                    <option value="">All Locations</option>
+                    <option value="inside">Inside</option>
+                    <option value="outside">Outside</option>
+                    <option value="blocked">Blocked</option>
+                  </select>
+                </div>
+                <div class="attendance-filter-row">
+                  <select id="attendancePeriod" class="form-input" style="width:auto;">
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="7days">Last 7 Days</option>
+                    <option value="30days">Last 30 Days</option>
+                    <option value="custom">Custom Range</option>
+                  </select>
+                  <div id="attendanceCustomRange" class="hidden" style="display:none;gap:var(--space-2);align-items:center;">
+                    <input type="date" id="attendanceStartDate" class="form-input" style="width:auto;" />
+                    <span class="text-muted">to</span>
+                    <input type="date" id="attendanceEndDate" class="form-input" style="width:auto;" />
+                  </div>
+                  <button id="attendanceClearFilters" class="btn btn-sm btn-outline">Clear Filters</button>
+                  <button id="attendanceExportBtn" class="btn btn-sm btn-accent">Export Attendance</button>
+                </div>
+              </div>
+
+              <!-- Records Table -->
+              <div id="attendanceRecordsContainer" class="table-container">
+                <div class="spinner-overlay"><div class="spinner"></div></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Attendance Details Modal -->
+          <div id="attendanceDetailModal" class="modal hidden" hidden>
+            <div class="modal-backdrop" data-close="attendanceDetailModal"></div>
+            <div class="modal-content">
+              <div class="modal-header">
+                <h4 class="modal-title">Attendance Verification Details</h4>
+                <button class="modal-close" data-close="attendanceDetailModal" aria-label="Close">&times;</button>
+              </div>
+              <div class="modal-body" id="attendanceDetailBody">
+                <div class="detail-grid">
+                  <div class="detail-section">
+                    <h5 class="detail-section-title">Employee Information</h5>
+                    <div class="detail-row"><span class="detail-label">Employee ID</span><span class="detail-value" id="detailEmployeeId">--</span></div>
+                    <div class="detail-row"><span class="detail-label">Full Name</span><span class="detail-value" id="detailName">--</span></div>
+                    <div class="detail-row"><span class="detail-label">Department</span><span class="detail-value" id="detailDept">--</span></div>
+                    <div class="detail-row"><span class="detail-label">Appointment</span><span class="detail-value" id="detailAppointment">--</span></div>
+                  </div>
+                  <div class="detail-section">
+                    <h5 class="detail-section-title">Attendance</h5>
+                    <div class="detail-row"><span class="detail-label">Date</span><span class="detail-value" id="detailDate">--</span></div>
+                    <div class="detail-row"><span class="detail-label">Verification Time</span><span class="detail-value" id="detailTime">--</span></div>
+                    <div class="detail-row"><span class="detail-label">Action</span><span class="detail-value" id="detailAction">--</span></div>
+                    <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value" id="detailStatus">--</span></div>
+                  </div>
+                  <div class="detail-section">
+                    <h5 class="detail-section-title">Location</h5>
+                    <div class="detail-row"><span class="detail-label">Latitude</span><span class="detail-value" id="detailLat">--</span></div>
+                    <div class="detail-row"><span class="detail-label">Longitude</span><span class="detail-value" id="detailLng">--</span></div>
+                    <div class="detail-row"><span class="detail-label">GPS Accuracy</span><span class="detail-value" id="detailAccuracy">--</span></div>
+                    <div class="detail-row"><span class="detail-label">Distance from Office</span><span class="detail-value" id="detailDistance">--</span></div>
+                    <div class="detail-row"><span class="detail-label">Location Status</span><span class="detail-value" id="detailLocationStatus">--</span></div>
+                  </div>
+                  <div class="detail-section">
+                    <h5 class="detail-section-title">Biometric</h5>
+                    <div class="detail-row"><span class="detail-label">Face Verification</span><span class="detail-value" id="detailFaceVerification">--</span></div>
+                    <div class="detail-row"><span class="detail-label">Face Image</span><span class="detail-value" id="detailFaceImage"></span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+         <!-- Employees Section -->
+          <section id="section-employees" class="admin-section hidden" hidden>
+            <div class="employees-header">
+              <div class="employees-title-group">
+                <h4 class="employees-title">Personnel Directory</h4>
+                <p class="employees-subtitle" id="employeeCount">Loading personnel...</p>
+              </div>
+              <div class="employees-controls">
+                <input type="text" id="employeeSearch" class="form-input" placeholder="Search ID, Name, Dept..." style="width:200px;">
+                <select id="employeeDeptFilter" class="form-input" style="width:auto;">
+                  <option value="">All Departments</option>
+                </select>
+              </div>
+            </div>
+            <div id="employeeTable" class="table-container"></div>
+          </section>
+
+          <!-- Employee Profile Modal -->
+          <div id="employeeProfileModal" class="modal hidden" hidden>
+            <div class="modal-backdrop" data-close="employeeProfileModal"></div>
+            <div class="modal-content">
+              <div class="modal-header">
+                <h4 class="modal-title">Personnel Profile</h4>
+                <button class="modal-close" data-close="employeeProfileModal" aria-label="Close">&times;</button>
+              </div>
+              <div class="modal-body" id="employeeProfileBody">
+                <div class="profile-grid">
+                  <div class="profile-group">
+                    <label class="profile-label">Employee ID</label>
+                    <span class="profile-value" id="profileEmployeeId"></span>
+                  </div>
+                  <div class="profile-group">
+                    <label class="profile-label">Full Name</label>
+                    <span class="profile-value" id="profileName"></span>
+                  </div>
+                  <div class="profile-group">
+                    <label class="profile-label">Department</label>
+                    <span class="profile-value" id="profileDept"></span>
+                  </div>
+                  <div class="profile-group">
+                    <label class="profile-label">Appointment</label>
+                    <span class="profile-value" id="profileAppointment"></span>
+                  </div>
+                  <div class="profile-group">
+                    <label class="profile-label">Phone</label>
+                    <span class="profile-value" id="profilePhone"></span>
+                  </div>
+                  <div class="profile-group">
+                    <label class="profile-label">Registered Date</label>
+                    <span class="profile-value" id="profileRegisteredAt"></span>
+                  </div>
+                  <div class="profile-group">
+                    <label class="profile-label">Face Registration</label>
+                    <span class="profile-value" id="profileFaceStatus"></span>
+                  </div>
+                  <div class="profile-group">
+                    <label class="profile-label">Registered Location</label>
+                    <span class="profile-value" id="profileLocation"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+         <!-- Register Employee Section -->
+          <section id="section-register" class="admin-section hidden" hidden>
+           <div class="card panel-grid">
+             <div>
+               <h4 class="card-title">Personnel Information</h4>
+
+               <div class="form-group">
+                 <label class="form-label" for="regUserId">Employee ID</label>
+                 <input id="regUserId" type="text" class="form-input" placeholder="Unique Employee ID" maxlength="8" />
+               </div>
+
+               <div class="form-group">
+                 <label class="form-label" for="regName">Full Name</label>
+                 <input id="regName" type="text" class="form-input" placeholder="Full Name" />
+               </div>
+
+               <div class="form-group">
+                 <label class="form-label" for="regDept">Department</label>
+                 <input id="regDept" type="text" class="form-input" placeholder="Department" list="regDeptList" />
+                 <datalist id="regDeptList"></datalist>
+               </div>
+
+               <div class="form-group">
+                 <label class="form-label" for="regAppointment">Appointment</label>
+                 <input id="regAppointment" type="text" class="form-input" placeholder="Military/Civilian Appointment" list="regApptList" />
+                 <datalist id="regApptList"></datalist>
+               </div>
+
+               <div class="form-group">
+                 <label class="form-label" for="regPhone">Phone Number (optional)</label>
+                 <input id="regPhone" type="tel" class="form-input" placeholder="Phone Number (optional)" />
+               </div>
+
+               <div class="flex flex-wrap gap-3">
+                 <button id="regBtn" class="btn btn-accent" disabled>Register Employee</button>
+                 <button id="clearBtn" class="btn btn-outline">Clear Form</button>
+               </div>
+             </div>
+             <div>
+               <h4 class="card-title">Biometric Registration</h4>
+               <div class="camera-frame">
+                 <video id="video" autoplay muted playsinline class="camera-preview"></video>
+                 <div class="camera-overlay" id="cameraOverlay">
+                   <div class="camera-guide"></div>
+                   <div class="camera-status-text" id="cameraStatusText">Waiting for camera</div>
+                 </div>
+               </div>
+               <div class="flex flex-wrap gap-3 mt-3">
+                 <button id="startBtn" class="btn btn-primary">Start Camera</button>
+                 <button id="scanBtn" class="btn btn-accent" disabled>Scan Face</button>
+               </div>
+               <div class="location-status card mt-3" id="locationStatus">
+                 <div class="location-status-title">GPS Location Status</div>
+                 <div class="location-status-text" id="locationStatusText">Checking office location...</div>
+                 <div class="location-details" id="locationDetails" style="display:none;">
+                   <span class="location-accuracy" id="locationAccuracy"></span>
+                   <span class="location-distance" id="locationDistance"></span>
+                 </div>
+               </div>
+               <div class="status-card mt-3" id="matchCard"><div id="status">Loading system... (Camera access required for attendance)</div></div>
+             </div>
+           </div>
+         </section>
+
+        <!-- Reports Section -->
+         <section id="section-reports" class="admin-section hidden" hidden>
+           <div class="reports-workspace">
+
+             <!-- Page Header -->
+             <div class="reports-header">
+               <div class="reports-header-title-group">
+                 <h3 class="reports-title">Reports &amp; Export Center</h3>
+                 <p class="reports-subtitle">Generate, review and export attendance reports.</p>
+               </div>
+               <div class="reports-date-indicator" id="reportsDateIndicator">Today</div>
+             </div>
+
+             <!-- Filters -->
+             <div class="reports-filters-card">
+               <div class="reports-filter-row">
+                 <div class="reports-filter-group">
+                   <label class="reports-filter-label">Date Range</label>
+                   <div class="reports-period-buttons" role="group">
+                     <button type="button" class="btn btn-sm btn-outline reports-period-btn active" data-period="today">Today</button>
+                     <button type="button" class="btn btn-sm btn-outline reports-period-btn" data-period="yesterday">Yesterday</button>
+                     <button type="button" class="btn btn-sm btn-outline reports-period-btn" data-period="7days">Last 7 Days</button>
+                     <button type="button" class="btn btn-sm btn-outline reports-period-btn" data-period="30days">Last 30 Days</button>
+                     <button type="button" class="btn btn-sm btn-outline reports-period-btn" data-period="90days">Last 90 Days</button>
+                     <button type="button" class="btn btn-sm btn-outline reports-period-btn" data-period="custom">Custom Range</button>
+                   </div>
+                 </div>
+
+                 <div class="reports-filter-group" id="reportsCustomDateGroup" hidden>
+                   <label class="reports-filter-label">Custom Dates</label>
+                   <div class="reports-custom-dates">
+                     <input type="date" id="reportsStartDate" class="form-input" style="width:auto;" />
+                     <span class="text-muted">to</span>
+                     <input type="date" id="reportsEndDate" class="form-input" style="width:auto;" />
+                   </div>
+                 </div>
+               </div>
+
+               <div class="reports-filter-row">
+                 <div class="reports-filter-group">
+                   <label class="reports-filter-label" for="reportsDeptFilter">Department</label>
+                   <select id="reportsDeptFilter" class="form-input" style="width:auto;">
+                     <option value="">Loading departments...</option>
+                   </select>
+                 </div>
+
+                 <div class="reports-filter-group">
+                   <label class="reports-filter-label" for="reportsEmployeeFilter">Employee</label>
+                   <select id="reportsEmployeeFilter" class="form-input" style="width:auto;">
+                     <option value="">Loading employees...</option>
+                   </select>
+                 </div>
+
+                 <div class="reports-filter-group">
+                   <label class="reports-filter-label" for="reportsStatusFilter">Status</label>
+                   <select id="reportsStatusFilter" class="form-input" style="width:auto;">
+                     <option value="">All Status</option>
+                     <option value="verified">Verified</option>
+                     <option value="late">Late</option>
+                     <option value="blocked">Blocked</option>
+                     <option value="failed">Failed</option>
+                   </select>
+                 </div>
+
+                 <div class="reports-filter-group">
+                   <label class="reports-filter-label" for="reportsLocationFilter">Location</label>
+                   <select id="reportsLocationFilter" class="form-input" style="width:auto;">
+                     <option value="">All Locations</option>
+                     <option value="inside">Inside</option>
+                     <option value="outside">Outside</option>
+                     <option value="blocked">Blocked</option>
+                   </select>
+                 </div>
+               </div>
+
+               <div class="reports-filter-row reports-filter-actions">
+                 <button id="reportsGenerateBtn" class="btn btn-sm btn-accent">Generate Report</button>
+                 <button id="reportsResetBtn" class="btn btn-sm btn-outline">Reset Filters</button>
+               </div>
+
+               <!-- Selected Filters Summary -->
+               <div class="reports-filter-summary" id="reportsFilterSummary">
+                 <span class="reports-filter-summary-label">Active filters:</span>
+                 <span class="reports-filter-summary-text" id="reportsFilterSummaryText">None</span>
+               </div>
+             </div>
+
+             <!-- Results -->
+             <div id="reportsResultsContainer" class="reports-results-card">
+               <div class="reports-skeleton" id="reportsSkeleton">
+                 <div class="skeleton" style="height:40px;width:100%;margin-bottom:12px;"></div>
+                 <div class="skeleton" style="height:24px;width:60%;margin-bottom:12px;"></div>
+                 <div class="skeleton" style="height:20px;width:40%;margin-bottom:8px;"></div>
+                 <div class="skeleton" style="height:20px;width:100%;margin-bottom:8px;"></div>
+                 <div class="skeleton" style="height:20px;width:80%;margin-bottom:8px;"></div>
+                 <div class="skeleton" style="height:20px;width:60%;margin-top:12px;"></div>
+               </div>
+             </div>
+           </div>
+
+           <!-- Hidden legacy buttons required by script.js window.export* functions -->
+           <div id="reportsExportNav" hidden>
+             <button id="exportExcelBtnNav" class="btn btn-success">Export Excel</button>
+             <button id="exportPdfBtnNav" class="btn btn-primary">Export PDF</button>
+             <button id="exportAbsentBtnNav" class="btn btn-danger">Absent Excel</button>
+           </div>
+         </section>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Auth state bridge for admin-login.js and admin-dashboard.js
+    (function() {
+      'use strict';
+      const loginScreen = document.getElementById('adminLoginScreen');
+      const dashboardScreen = document.getElementById('adminDashboardScreen');
+
+      window.__adminShowDashboard = function() {
+        if (loginScreen) loginScreen.classList.add('hidden');
+        if (dashboardScreen) dashboardScreen.classList.remove('hidden');
+      };
+
+      window.__adminShowLogin = function() {
+        if (dashboardScreen) dashboardScreen.classList.add('hidden');
+        if (loginScreen) loginScreen.classList.remove('hidden');
+      };
+    })();
+  </script>
+</body>
+</html>

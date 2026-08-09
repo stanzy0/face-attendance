@@ -1,0 +1,231 @@
+/* ============================================
+   BioTrack Design System - Theme Tokens
+   Military-Grade Biometric Verification Platform
+   ============================================ */
+
+:root {
+  /* === Color Palette === */
+  --color-primary: #4B5320;
+  --color-primary-light: #6B7A3A;
+  --color-primary-dark: #3A4218;
+  --color-secondary: #556B2F;
+  --color-secondary-light: #6B8A3F;
+  --color-secondary-dark: #3E4F22;
+  --color-accent: #C8A646;
+  --color-accent-light: #D4B86A;
+  --color-accent-dark: #A88A32;
+  --color-success: #2E8B57;
+  --color-success-light: #3CB371;
+  --color-success-dark: #236B42;
+  --color-warning: #D4A017;
+  --color-warning-light: #E0B030;
+  --color-warning-dark: #B08514;
+  --color-danger: #8B1E1E;
+  --color-danger-light: #A52A2A;
+  --color-danger-dark: #6B1515;
+
+  /* === Backgrounds === */
+  --bg-primary: #1B2416;
+  --bg-primary-light: #243020;
+  --bg-surface: #27331F;
+  --bg-surface-light: #2F3D27;
+  --bg-surface-dark: #1E2918;
+  --bg-elevated: #2A3622;
+  --bg-glass: rgba(39, 51, 31, 0.85);
+
+  /* === Text === */
+  --text-primary: #F5F5DC;
+  --text-primary-light: #FAFAF0;
+  --text-secondary: #C8C8B0;
+  --text-muted: #9A9A80;
+  --text-inverse: #1B2416;
+
+  /* === Borders === */
+  --border-color: rgba(245, 245, 220, 0.12);
+  --border-color-light: rgba(245, 245, 220, 0.2);
+  --border-color-dark: rgba(245, 245, 220, 0.06);
+  --border-radius-sm: 8px;
+  --border-radius-md: 12px;
+  --border-radius-lg: 18px;
+  --border-radius-xl: 24px;
+  --border-radius-full: 9999px;
+
+  /* === Shadows === */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(200, 166, 70, 0.15);
+  --shadow-glow-strong: 0 0 40px rgba(200, 166, 70, 0.25);
+
+  /* === Typography === */
+  --font-family: 'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 2rem;
+  --font-size-4xl: 2.5rem;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+
+  /* === Spacing (8px grid) === */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  /* === Transitions === */
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+  --transition-slow: 350ms ease;
+  --transition-smooth: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* === Z-Index === */
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal-backdrop: 300;
+  --z-modal: 400;
+  --z-tooltip: 500;
+
+  /* === Breakpoints (for reference in media queries) === */
+  --bp-sm: 640px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1280px;
+}
+
+/* === Page Layout === */
+.page {
+  width: min(800px, 92%);
+  padding: var(--space-10) var(--space-6) var(--space-8);
+  position: relative;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(75, 83, 32, 0.15), transparent 45%),
+    radial-gradient(circle at 80% 25%, rgba(85, 107, 47, 0.1), transparent 55%),
+    radial-gradient(circle at 50% 80%, rgba(200, 166, 70, 0.05), transparent 50%);
+  filter: blur(60px);
+  opacity: 0.8;
+  z-index: -1;
+}
+
+.logo-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+}
+
+/* === Responsive === */
+@media (max-width: 768px) {
+  .page {
+    padding: var(--space-8) var(--space-5) var(--space-6);
+    width: 94%;
+  }
+}
+
+@media (max-width: 520px) {
+  .page {
+    padding: var(--space-6) var(--space-4) var(--space-5);
+    width: 100%;
+  }
+}
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: auto;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  color: var(--text-primary);
+  background-color: var(--bg-primary, #1B2416);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+img, video {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover, a:focus {
+  color: var(--color-accent-light);
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* === Focus Visible === */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--border-radius-sm);
+}
+
+/* === Screen Reader Only === */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

@@ -1,0 +1,21 @@
+/* Absence Tracking Styles */
+.absence-stats { 
+  background: linear-gradient(135deg, rgba(46, 139, 87, 0.2), rgba(200, 166, 70, 0.1)); 
+  border: 1px solid rgba(200, 166, 70, 0.3);
+  border-radius: 12px; 
+  padding: 16px; 
+  margin-bottom: 16px; 
+  display: grid; 
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+  gap: 12px; 
+  font-weight: 600; 
+}
+.absence-total { color: var(--text-primary); }
+.absence-present { color: #2E8B57; }
+.absence-absent { color: #ff6b6b; }
+.absence-rate { color: #C8A646; font-size: 1.2em; }
+.report-toggle { background: linear-gradient(135deg, #8B1E1E, #A52A2A); }
+.report-toggle.active { background: linear-gradient(135deg, #2E8B57, #3CB371); }
+.absent-row { background: rgba(139, 30, 30, 0.1); }
+.present-row { background: rgba(46, 139, 87, 0.1); }
+@media (max-width: 768px) { .absence-stats { grid-template-columns: 1fr; } }
