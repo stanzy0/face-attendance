@@ -1,164 +1,26 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>BioTrack - Biometric Face Verification</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BioTrack — Biometric Face Verification & Attendance System</title>
   <link rel="icon" href="assets/afcsc logo.png" type="image/png" />
-  <link rel="stylesheet" href="css/theme.css">
-  <link rel="stylesheet" href="css/components.css">
-  <link rel="stylesheet" href="css/verification.css">
-  <!-- Load face-api.js - local file first (included in deployment), fallback to CDN -->
-  <script src="face-api.min.js"></script>
-  <script>
-    if (typeof faceapi === 'undefined') {
-      document.write('<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"><\/script>');
-    }
-  </script>
-  <script defer src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-  <script defer src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
-  <script defer src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
-  <script defer src="firebase-config.js"></script>
-  <script defer src="script.js"></script>
+  <meta http-equiv="refresh" content="0; url=/landing.html" />
+  <link rel="canonical" href="/landing.html" />
+  <style>
+    body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; background: #1B2416; color: #F5F5DC; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .redirect-box { text-align: center; padding: 2rem; }
+    .redirect-box a { color: #C8A646; }
+  </style>
 </head>
 <body>
-  <div class="page verification-page">
-    <!-- Application Header -->
-    <header class="verification-header">
-      <div class="verification-header-inner">
-        <a href="landing.html" class="verification-brand" aria-label="BioTrack Home">
-          <img src="assets/afcsc logo.png" alt="AFCSC" class="brand-logo" />
-          <span class="brand-text">BioTrack</span>
-          <img src="assets/army logo.png" alt="Army" class="brand-logo" />
-        </a>
-        <div class="system-status" id="systemStatus" aria-live="polite">
-          <span class="system-status-dot" aria-hidden="true"></span>
-          <span id="systemStatusText">Initializing</span>
-        </div>
-      </div>
-    </header>
-
-    <!-- Main Verification Area -->
-    <main class="verification-main">
-      <!-- Left: Camera Panel -->
-      <div class="verification-camera-panel">
-        <div class="camera-wrapper">
-          <div class="camera-container" id="cameraContainer">
-            <video id="video" autoplay muted playsinline></video>
-            <div class="camera-overlay" aria-hidden="true">
-              <div class="scan-corners">
-                <span class="corner top-left"></span>
-                <span class="corner top-right"></span>
-                <span class="corner bottom-left"></span>
-                <span class="corner bottom-right"></span>
-              </div>
-              <div class="scan-line" id="scanLine"></div>
-            </div>
-            <div class="camera-placeholder" id="cameraPlaceholder">
-              <svg class="camera-placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                <circle cx="12" cy="13" r="4"/>
-              </svg>
-              <span class="camera-placeholder-text">Camera Ready</span>
-              <span class="camera-placeholder-hint">Start the camera to begin biometric verification</span>
-            </div>
-          </div>
-          <div class="camera-actions">
-            <button id="startBtn" class="btn btn-accent">Start Camera</button>
-            <button id="scanBtn" class="btn btn-accent" disabled>Scan Face</button>
-          </div>
-          <div class="status-bar">
-            <div id="status" class="status-chip">Loading system...</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Right: Verification Information -->
-      <div class="verification-info-panel">
-        <!-- Verification Status Card -->
-        <div class="info-card verification-card">
-          <div class="info-card-header">
-            <h3>Biometric Verification</h3>
-            <span class="info-card-badge ready" id="verifyBadge">Ready</span>
-          </div>
-          <div id="verificationStatus" class="verification-status">
-            <p class="text-muted">Position your face inside the frame to begin verification.</p>
-            <div class="verification-result" id="verificationResult">
-              <div class="verification-result-header">
-                <svg class="verification-result-icon" id="verificationResultIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                <span class="verification-result-title" id="verificationResultTitle">Identity Verified</span>
-              </div>
-              <div class="verification-details" id="verificationDetails"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Location Status Card -->
-        <div class="info-card location-card">
-          <div class="info-card-header">
-            <h3>Location Verification</h3>
-            <span class="info-card-badge" id="locationBadge">Pending</span>
-          </div>
-          <div id="locationStatus" class="location-status">
-            <p class="text-muted">Location will be verified during face scan.</p>
-            <div class="location-details" id="locationDetails">
-              <div class="location-detail-row">
-                <span class="location-detail-label">Distance</span>
-                <span class="location-detail-value" id="locationDistance">--</span>
-              </div>
-              <div class="location-detail-row">
-                <span class="location-detail-label">Status</span>
-                <span class="location-detail-value" id="locationState">--</span>
-              </div>
-              <div class="location-detail-row">
-                <span class="location-detail-label">Attendance</span>
-                <span class="location-detail-value" id="locationAttendance">--</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Last Verification Card -->
-        <div class="info-card last-card">
-          <div class="info-card-header">
-            <h3>Last Verification</h3>
-          </div>
-          <div id="lastVerification" class="last-verification">
-            <p class="text-muted">No previous verification on this device.</p>
-            <div class="last-verification-content" id="lastVerificationContent">
-              <div class="last-verification-name" id="lastVerificationName">--</div>
-              <div class="last-verification-meta">
-                <div class="last-verification-meta-item">
-                  <span class="last-verification-meta-label">Employee ID</span>
-                  <span class="last-verification-meta-value" id="lastVerificationId">--</span>
-                </div>
-                <div class="last-verification-meta-item">
-                  <span class="last-verification-meta-label">Department</span>
-                  <span class="last-verification-meta-value" id="lastVerificationDept">--</span>
-                </div>
-                <div class="last-verification-meta-item">
-                  <span class="last-verification-meta-label">Confidence</span>
-                  <span class="last-verification-meta-value" id="lastVerificationConfidence">--</span>
-                </div>
-                <div class="last-verification-meta-item">
-                  <span class="last-verification-meta-label">Time</span>
-                  <span class="last-verification-meta-value" id="lastVerificationTime">--</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- Admin Access -->
-    <div id="actionLink" class="admin-link">
-      Need administrator access? <a href="admin.html">Go to Admin Dashboard</a>
-    </div>
-    <div id="matchInfo" class="hidden" aria-hidden="true"></div>
+  <div class="redirect-box">
+    <h1>BioTrack</h1>
+    <p>Redirecting to the BioTrack landing page…</p>
+    <p><a href="/landing.html">Click here if you are not redirected automatically.</a></p>
   </div>
-
-  <script defer src="verification.js"></script>
+  <script>
+    window.location.replace('/landing.html');
+  </script>
 </body>
 </html>
