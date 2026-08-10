@@ -532,15 +532,14 @@ async function scanFace() {
     const users = await getCachedUsers();
     let match = null, minDistance = Infinity;
 
-    users.forEach(doc => {
-      const data = doc.data();
-      if (data.faceDescriptor) {
+    users.forEach(user => {
+      if (user.faceDescriptor) {
         const distance = faceapi.euclideanDistance(
           Array.from(detection.descriptor),
-          new Float32Array(data.faceDescriptor)
+          new Float32Array(user.faceDescriptor)
         );
         if (distance < 0.6 && distance < minDistance) {
-          match = { id: doc.id, name: data.name, dept: data.dept, appointment: data.appointment };
+          match = { id: user.id, name: user.name, dept: user.dept, appointment: user.appointment };
           minDistance = distance;
         }
       }
