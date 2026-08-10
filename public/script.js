@@ -73,6 +73,10 @@ async function verifyOfficeLocation() {
 // Global vars
 let firebaseApp, auth, db, video, canvas, displaySize, currentLocation;
 let isAdminSignedIn = false;
+let isScanning = false;
+let cachedUsers = null;
+let usersCacheTimestamp = 0;
+const USERS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 // ADMIN FUNCTIONS (bridge compatible)
 async function adminSignIn() {
@@ -393,11 +397,13 @@ async function registerFace() {
     }
     
      await db.collection('users').doc(formData.userId).set({
-      ...formData,
-      faceDescriptor: Array.from(detections[0].descriptor),
-      registeredLocation: currentLocation,
-      registeredAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+       ...formData,
+       faceDescriptor: Array.from(detections[0].descriptor),
+       registeredLocation: currentLocation,
+       registeredAt: firebase.firestore.FieldValue.serverTimestamp()
+     });
+
+     invalidateUsersCache();
 
     var statusEl = document.getElementById('status');
     if (statusEl) {
@@ -429,6 +435,24 @@ function goToEmployeesSection() {
   }
 }
 
+// === USER CACHE FOR FASTER SCANNING ===
+async function getCachedUsers() {
+  const now = Date.now();
+  if (cachedUsers && (now - usersCacheTimestamp) < USERS_CACHE_TTL_MS) {
+    return cachedUsers;
+  }
+  if (!db) return [];
+  const snapshot = await db.collection('users').get();
+  cachedUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  usersCacheTimestamp = now;
+  return cachedUsers;
+}
+
+function invalidateUsersCache() {
+  cachedUsers = null;
+  usersCacheTimestamp = 0;
+}
+
 // CAMERA + SCAN
 async function startCamera() {
   try {
@@ -455,26 +479,37 @@ async function startCamera() {
 async function scanFace() {
   if (!video?.srcObject) return showStatus('Start camera first', 'error');
   if (!video.videoWidth || video.readyState < 2) return showStatus('Wait for camera preview...', 'error');
-  
+  if (isScanning) return;
+
+  isScanning = true;
+  const scanBtn = document.getElementById('scanBtn');
+  if (scanBtn) scanBtn.disabled = true;
+
   try {
-    await verifyOfficeLocation();
-    
-    showStatus('Looking for face...', 'info');
-    const detection = await faceapi
-      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptor();
-    
-    if (!detection) return showStatus('No face detected - try closer/better light', 'error');
-    
-    // CAPTURE FACE IMAGE
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCanvas.width = 200;
-    tempCanvas.height = 200;
-    tempCtx.drawImage(video, 0, 0, 200, 200);
-    const faceImageDataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
-    
+    showStatus('Verifying...', 'info');
+
+    let detection;
+    try {
+      const [, detectionResult] = await Promise.all([
+        verifyOfficeLocation(),
+        (async () => {
+          showStatus('Looking for face...', 'info');
+          return await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+        })()
+      ]);
+      detection = detectionResult;
+    } catch (e) {
+      // GPS failure or face detection failure
+      throw e;
+    }
+
+    if (!detection) {
+      showStatus('No face detected - try closer/better light', 'error');
+      return;
+    }
+
     // Draw detection overlay
     const displaySize = { width: video.videoWidth, height: video.videoHeight };
     if (canvas) {
@@ -484,11 +519,19 @@ async function scanFace() {
       faceapi.draw.drawDetections(canvas, resized);
       faceapi.draw.drawFaceLandmarks(canvas, resized);
     }
-    
-    // Match users
-    const users = await db.collection('users').get();
+
+    // CAPTURE FACE IMAGE
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCanvas.width = 200;
+    tempCanvas.height = 200;
+    tempCtx.drawImage(video, 0, 0, 200, 200);
+    const faceImageDataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
+
+    // Match users using cached data to avoid repeated Firestore reads
+    const users = await getCachedUsers();
     let match = null, minDistance = Infinity;
-    
+
     users.forEach(doc => {
       const data = doc.data();
       if (data.faceDescriptor) {
@@ -502,25 +545,25 @@ async function scanFace() {
         }
       }
     });
-    
+
     if (match) {
-      // CHECK FOR TODAY'S RECORD - ONE SCAN PER DAY (FIRESTORE INDEX REQUIRED)
+      // CHECK FOR TODAY'S RECORD - ONE SCAN PER DAY
       const today = new Date().toISOString().split('T')[0];
       const existing = await db.collection('attendance')
         .where('userId', '==', match.id)
         .where('date', '==', today)
         .limit(1)
         .get();
-      
+
       if (!existing.empty) {
         const existingDoc = existing.docs[0];
         const existingTime = existingDoc.data().timestamp.toDate().toLocaleTimeString();
         showStatus(`⚠️ ${match.name} already scanned at ${existingTime}`, 'warning');
         return;
       }
-      
+
       showStatus(`✅ ${match.name} (${match.appointment}) logged in! Distance: ${minDistance.toFixed(2)}`, 'success');
-      
+
       await db.collection('attendance').add({
         userId: match.id,
         name: match.name,
@@ -532,7 +575,7 @@ async function scanFace() {
         date: today,
         action: 'check-in'
       });
-      
+
       if (isAdminSignedIn) loadAttendanceRecords();
     } else {
       showStatus('No match (distance > 0.6). Register first.', 'error');
@@ -540,6 +583,10 @@ async function scanFace() {
   } catch (e) {
     const message = (e && e.message) ? e.message : (typeof e === 'string' ? e : 'An unexpected error occurred');
     showStatus('Error: ' + message, 'error');
+  } finally {
+    isScanning = false;
+    const scanBtn = document.getElementById('scanBtn');
+    if (scanBtn) scanBtn.disabled = false;
   }
 }
 
@@ -568,8 +615,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.firebaseApp = firebaseApp;
     window.auth = auth;
     window.db = db;
-    
-  auth.onAuthStateChanged(user => {
+
+    // Preload users cache for faster face matching
+    getCachedUsers().catch(() => {});
+
+    auth.onAuthStateChanged(user => {
     isAdminSignedIn = !!user;
     const signOutBtn = document.getElementById('adminSignOutBtn');
     const panel = document.getElementById('attendanceAdminPanel');
