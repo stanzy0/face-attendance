@@ -2776,32 +2776,12 @@
     var container = document.getElementById(containerId);
     if (!container) return;
 
-    if (!records || records.length === 0 || !users || users.length === 0) {
+    if (!records || records.length === 0 || !users || !users.length) {
       container.innerHTML = '<div class="analytics-empty">No department data available.</div>';
       return;
     }
 
-    var deptStats = {};
-    users.forEach(function(u) {
-      var dept = u.dept || 'Unknown';
-      if (!deptStats[dept]) deptStats[dept] = { total: 0, present: new Set(), late: 0 };
-      deptStats[dept].total++;
-    });
-
-    records.forEach(function(r) {
-      var dept = r.dept || 'Unknown';
-      if (!deptStats[dept]) deptStats[dept] = { total: 0, present: new Set(), late: 0 };
-      if (r.userId && getAttendanceStatus(r) === 'Verified') deptStats[dept].present.add(r.userId);
-      if (getAttendanceStatus(r) === 'Late') deptStats[dept].late++;
-    });
-
-    var deptData = Object.keys(deptStats).map(function(dept) {
-      var stats = deptStats[dept];
-      var present = stats.present.size;
-      var absent = Math.max(0, stats.total - present);
-      var rate = stats.total > 0 ? Math.round((present / stats.total) * 100) : 0;
-      return { dept: dept, total: stats.total, present: present, absent: absent, late: stats.late, rate: rate };
-    }).sort(function(a, b) { return b.rate - a.rate; });
+    var deptData = getAnalyticsDepartmentData(records, users);
 
     var maxRate = 100;
     var width = 400;
@@ -3106,24 +3086,31 @@
       });
   }
 
-  function renderAnalyticsEmployeeInsights(containerId, records, users) {
-    var container = document.getElementById(containerId);
-    if (!container) return;
+  function getAnalyticsDepartmentData(records, users) {
+    var deptStats = {};
+    users.forEach(function(u) {
+      var dept = u.dept || 'Unknown';
+      if (!deptStats[dept]) deptStats[dept] = { total: 0, present: new Set(), late: 0 };
+      deptStats[dept].total++;
+    });
 
-    if (!records || records.length === 0 || !users || users.length === 0) {
-      container.innerHTML = '<div class="analytics-empty">No employee data available for the selected period.</div>';
-      return;
-    }
+    records.forEach(function(r) {
+      var dept = r.dept || 'Unknown';
+      if (!deptStats[dept]) deptStats[dept] = { total: 0, present: new Set(), late: 0 };
+      if (r.userId && getAttendanceStatus(r) === 'Verified') deptStats[dept].present.add(r.userId);
+      if (getAttendanceStatus(r) === 'Late') deptStats[dept].late++;
+    });
 
-    var searchTerm = '';
-    var deptFilter = '';
-    var searchInput = document.getElementById('analyticsEmployeeSearch');
-    var deptSelect = document.getElementById('analyticsEmployeeDeptFilter');
-    if (searchInput) searchTerm = searchInput.value.trim().toLowerCase();
-    if (deptSelect) deptFilter = deptSelect.value;
+    return Object.keys(deptStats).map(function(dept) {
+      var stats = deptStats[dept];
+      var present = stats.present.size;
+      var absent = Math.max(0, stats.total - present);
+      var rate = stats.total > 0 ? Math.round((present / stats.total) * 100) : 0;
+      return { dept: dept, total: stats.total, present: present, absent: absent, late: stats.late, rate: rate };
+    }).sort(function(a, b) { return b.rate - a.rate; });
+  }
 
-    var period = analyticsState.period;
-    var customRange = analyticsState.customRange;
+  function getAnalyticsEmployeeInsightsData(records, users, period, customRange) {
     var range = getAnalyticsDateRange(period, customRange);
     var allDates = [];
     var current = new Date(range.start);
@@ -3168,9 +3155,28 @@
       stats.rate = stats.totalDays > 0 ? Math.round((stats.present / stats.totalDays) * 100) : 0;
     });
 
-    var employeeData = Object.keys(employeeStats).map(function(userId) {
+    return Object.keys(employeeStats).map(function(userId) {
       return employeeStats[userId];
     }).sort(function(a, b) { return b.rate - a.rate; });
+  }
+
+  function renderAnalyticsEmployeeInsights(containerId, records, users) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (!records || records.length === 0 || !users || users.length === 0) {
+      container.innerHTML = '<div class="analytics-empty">No employee data available for the selected period.</div>';
+      return;
+    }
+
+    var searchTerm = '';
+    var deptFilter = '';
+    var searchInput = document.getElementById('analyticsEmployeeSearch');
+    var deptSelect = document.getElementById('analyticsEmployeeDeptFilter');
+    if (searchInput) searchTerm = searchInput.value.trim().toLowerCase();
+    if (deptSelect) deptFilter = deptSelect.value;
+
+    var employeeData = getAnalyticsEmployeeInsightsData(records, users, analyticsState.period, analyticsState.customRange);
 
     if (searchTerm) {
       employeeData = employeeData.filter(function(e) {
@@ -3221,6 +3227,225 @@
     var container = document.getElementById(containerId);
     if (!container) return;
     container.innerHTML = '<div class="analytics-error">' + escapeHtml(message) + '</div>';
+  }
+
+  function exportAnalyticsToPdf() {
+    if (!analyticsState.attendance || !analyticsState.users) {
+      showAnalyticsError('analyticsKpiCards', 'No analytics data available to export.');
+      return;
+    }
+
+    var pdfBtn = document.getElementById('analyticsExportPdfBtn');
+    if (pdfBtn) {
+      pdfBtn.disabled = true;
+      pdfBtn.textContent = 'Generating...';
+    }
+
+    var checkAndGenerate = function() {
+      if (window.jspdf && window.jspdf.jsPDF) {
+        var checkAutotable;
+        try {
+          checkAutotable = window.jspdf.jsPDF.prototype && typeof window.jspdf.jsPDF.prototype.autoTable !== 'undefined';
+        } catch(e) {
+          checkAutotable = false;
+        }
+
+        if (checkAutotable) {
+          generateAnalyticsPdf();
+        } else {
+          setTimeout(checkAndGenerate, 100);
+        }
+      } else {
+        setTimeout(checkAndGenerate, 100);
+      }
+    };
+
+    setTimeout(checkAndGenerate, 100);
+  }
+
+  function generateAnalyticsPdf() {
+    var pdfBtn = document.getElementById('analyticsExportPdfBtn');
+    try {
+      var records = analyticsState.attendance || [];
+      var users = analyticsState.users || [];
+      var period = analyticsState.period;
+      var customRange = analyticsState.customRange;
+      var range = getAnalyticsDateRange(period, customRange);
+      var startDateStr = formatDate(range.start);
+      var endDateStr = formatDate(range.end);
+      var department = analyticsState.department || '';
+
+      var filteredRecords = filterAnalyticsRecords(records, { department: department });
+      var scopedUsers = department
+        ? users.filter(function(user) { return user.dept === department; })
+        : users;
+      var totalStaff = scopedUsers.length;
+
+      var verifiedUserIds = new Set();
+      var lateCount = 0;
+      var blockedCount = 0;
+      var failedCount = 0;
+
+      filteredRecords.forEach(function(r) {
+        var status = getAttendanceStatus(r);
+        if (status === 'Verified' && r.userId) {
+          verifiedUserIds.add(r.userId);
+        } else if (status === 'Late') {
+          lateCount++;
+        } else if (status === 'Blocked') {
+          blockedCount++;
+        } else if (status === 'Failed') {
+          failedCount++;
+        }
+      });
+
+      var verifiedCount = verifiedUserIds.size;
+      var absentCount = Math.max(0, totalStaff - verifiedCount);
+      var punctualityRate = verifiedCount > 0 ? 100 : 0;
+
+      var inside = 0, outside = 0, blocked = 0;
+      filteredRecords.forEach(function(r) {
+        var locStatus = getAttendanceLocationStatus(r);
+        if (locStatus === 'Inside') inside++;
+        else if (locStatus === 'Outside') outside++;
+        else if (locStatus === 'Blocked') blocked++;
+      });
+      var totalLocations = filteredRecords.length || 1;
+      var locationCompliance = Math.round((inside / totalLocations) * 100);
+      var attendanceRate = totalStaff > 0 ? Math.round((verifiedCount / totalStaff) * 100) : 0;
+
+      var doc = new window.jspdf.jsPDF();
+
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text('BioTrack', 14, 22);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Attendance Analytics Report', 14, 30);
+
+      doc.setFontSize(9);
+      doc.text('Date Range: ' + startDateStr + ' - ' + endDateStr, 14, 38);
+      doc.text('Generated: ' + new Date().toLocaleString(), 14, 44);
+      doc.text('Department: ' + (department || 'All Departments'), 14, 50);
+
+      var yPos = 58;
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('KPI Summary', 14, yPos);
+      yPos += 6;
+
+      var kpiData = [
+        ['Total Personnel', totalStaff],
+        ['Verified', verifiedCount],
+        ['Late', lateCount],
+        ['Blocked', blockedCount],
+        ['Failed', failedCount],
+        ['Attendance Rate', attendanceRate + '%'],
+        ['Punctuality Rate', punctualityRate + '%'],
+        ['Location Compliance', locationCompliance + '%']
+      ];
+
+      doc.autoTable({
+        head: [['Metric', 'Value']],
+        body: kpiData,
+        startY: yPos,
+        theme: 'grid',
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [75, 83, 32] }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 14;
+
+      var deptData = getAnalyticsDepartmentData(filteredRecords, users);
+      if (deptData.length > 0) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Department Performance', 14, yPos);
+        yPos += 6;
+
+        var deptBody = deptData.map(function(d) {
+          return [d.dept, d.total, d.present, d.late, d.absent, d.rate + '%'];
+        });
+
+        doc.autoTable({
+          head: [['Department', 'Personnel', 'Verified', 'Late', 'Absent', 'Rate']],
+          body: deptBody,
+          startY: yPos,
+          theme: 'grid',
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [75, 83, 32] }
+        });
+
+        yPos = doc.lastAutoTable.finalY + 14;
+      }
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Attendance Records', 14, yPos);
+      yPos += 6;
+
+      if (filteredRecords.length > 0) {
+        var recordBody = filteredRecords.map(function(r) {
+          var timeStr = '--:--';
+          if (r.timestamp) {
+            try { timeStr = r.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch(e) { timeStr = '--:--'; }
+          }
+          var dateStr = r.date || '--';
+          if (r.timestamp) {
+            try { dateStr = r.timestamp.toDate().toLocaleDateString(); } catch(e) {}
+          }
+          var dist = r.location && r.location.distance != null ? r.location.distance : null;
+          var distStr = dist !== null ? dist + ' m' : '--';
+          var status = getAttendanceStatus(r);
+          var locStatus = getAttendanceLocationStatus(r);
+          return [
+            r.userId || '',
+            r.name || '',
+            r.dept || '',
+            r.appointment || '',
+            dateStr,
+            timeStr,
+            status,
+            locStatus,
+            distStr
+          ];
+        });
+
+        doc.autoTable({
+          head: [['Employee ID', 'Name', 'Department', 'Appointment', 'Date', 'Time', 'Status', 'Location', 'Distance']],
+          body: recordBody,
+          startY: yPos,
+          theme: 'grid',
+          styles: { fontSize: 7, cellPadding: 2 },
+          headStyles: { fillColor: [75, 83, 32] },
+          didDrawPage: function(data) {
+            doc.setFontSize(8);
+            doc.setTextColor(150);
+            doc.text('Page ' + doc.internal.getNumberOfPages(), data.settings.margin.left, doc.internal.pageSize.height - 10);
+          }
+        });
+      } else {
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text('No attendance records found for the selected filters.', 14, yPos);
+      }
+
+      var fileName = 'BioTrack_Analytics_' + startDateStr + '_' + endDateStr + '.pdf';
+      doc.save(fileName);
+      if (typeof showStatus === 'function') {
+        showStatus('PDF exported: ' + fileName, 'success');
+      } else {
+        showAnalyticsError('analyticsKpiCards', 'PDF exported: ' + fileName);
+      }
+    } catch (e) {
+      console.error('Analytics: PDF export failed', e);
+      showAnalyticsError('analyticsKpiCards', 'PDF export failed: ' + (e.message || e));
+    } finally {
+      if (pdfBtn) {
+        pdfBtn.disabled = false;
+        pdfBtn.textContent = 'Export PDF';
+      }
+    }
   }
 
   function setupAnalyticsEventListeners() {
@@ -3288,8 +3513,18 @@
     }
 
     var exportBtn = document.getElementById('analyticsExportBtn');
-    if (exportBtn) {
-      exportBtn.addEventListener('click', function() {
+    var exportMenu = document.getElementById('analyticsExportMenu');
+    if (exportBtn && exportMenu) {
+      exportBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        exportMenu.style.display = exportMenu.style.display === 'none' ? 'block' : 'none';
+      });
+    }
+
+    var excelBtn = document.getElementById('analyticsExportExcelBtn');
+    if (excelBtn) {
+      excelBtn.addEventListener('click', function() {
+        if (exportMenu) exportMenu.style.display = 'none';
         if (typeof window.exportExcel === 'function') {
           window.exportExcel();
         } else {
@@ -3297,6 +3532,18 @@
         }
       });
     }
+
+    var pdfBtn = document.getElementById('analyticsExportPdfBtn');
+    if (pdfBtn) {
+      pdfBtn.addEventListener('click', function() {
+        if (exportMenu) exportMenu.style.display = 'none';
+        exportAnalyticsToPdf();
+      });
+    }
+
+    document.addEventListener('click', function() {
+      if (exportMenu) exportMenu.style.display = 'none';
+    });
 
     var empSearch = document.getElementById('analyticsEmployeeSearch');
     if (empSearch) {

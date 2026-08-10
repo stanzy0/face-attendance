@@ -228,9 +228,15 @@
                 <h1 class="analytics-title">Analytics</h1>
                 <p class="analytics-subtitle">Detailed attendance and workforce intelligence</p>
               </div>
-              <div class="analytics-actions">
-                <button id="analyticsExportBtn" class="btn btn-accent">Export Report</button>
-              </div>
+               <div class="analytics-actions">
+                 <div style="position:relative;display:inline-block;">
+                   <button id="analyticsExportBtn" class="btn btn-accent">Export Report ▾</button>
+                   <div id="analyticsExportMenu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:var(--bg-surface,#27331F);border:1px solid var(--border-color,#3a4a2f);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:1000;min-width:180px;overflow:hidden;">
+                     <button id="analyticsExportExcelBtn" class="btn btn-outline" style="width:100%;text-align:left;border:none;border-radius:0;padding:10px 16px;background:transparent;color:var(--text-primary,#F5F5DC);">Export Excel</button>
+                     <button id="analyticsExportPdfBtn" class="btn btn-outline" style="width:100%;text-align:left;border:none;border-radius:0;padding:10px 16px;border-top:1px solid var(--border-color,#3a4a2f);background:transparent;color:var(--text-primary,#F5F5DC);">Export PDF</button>
+                   </div>
+                 </div>
+               </div>
             </div>
 
             <div class="analytics-filters">

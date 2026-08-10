@@ -106,6 +106,15 @@
     return text;
   }
 
+  function escapeHtml(value) {
+    return safeText(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   // === Override showStatus to update premium UI ===
   const originalShowStatus = window.showStatus;
   window.showStatus = function(msg, type) {
