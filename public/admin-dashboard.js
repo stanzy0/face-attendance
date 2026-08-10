@@ -3241,20 +3241,17 @@
       pdfBtn.textContent = 'Generating...';
     }
 
+    var pdfTimeout = setTimeout(function() {
+      showAnalyticsError('analyticsKpiCards', 'PDF generation timed out after 30 seconds.');
+      if (pdfBtn) {
+        pdfBtn.disabled = false;
+        pdfBtn.textContent = 'Export PDF';
+      }
+    }, 30000);
+
     try {
       if (!window.jspdf || !window.jspdf.jsPDF) {
         throw new Error('PDF export unavailable: jsPDF library is not loaded.');
-      }
-
-      var checkAutotable;
-      try {
-        checkAutotable = window.jspdf.jsPDF.prototype && typeof window.jspdf.jsPDF.prototype.autoTable !== 'undefined';
-      } catch (e) {
-        checkAutotable = false;
-      }
-
-      if (!checkAutotable) {
-        throw new Error('PDF export unavailable: autoTable plugin is not loaded.');
       }
 
       generateAnalyticsPdf();
@@ -3262,11 +3259,134 @@
       console.error('Analytics: PDF export failed', e);
       showAnalyticsError('analyticsKpiCards', 'PDF export failed: ' + (e.message || e));
     } finally {
+      clearTimeout(pdfTimeout);
       if (pdfBtn) {
         pdfBtn.disabled = false;
         pdfBtn.textContent = 'Export PDF';
       }
     }
+  }
+
+  function drawPdfTable(doc, options) {
+    var headers = options.headers || [];
+    var rows = options.rows || [];
+    var x = options.x != null ? options.x : 14;
+    var startY = options.y != null ? options.y : 58;
+    var columnWidths = options.columnWidths || [];
+    var rowHeight = options.rowHeight || 8;
+    var fontSize = options.fontSize || 9;
+    var headerFontSize = options.headerFontSize || fontSize + 1;
+    var headerFillColor = options.headerFillColor || [75, 83, 32];
+    var headerTextColor = options.headerTextColor || [255, 255, 255];
+    var lineColor = options.lineColor || [160, 160, 160];
+    var margin = options.margin != null ? options.margin : 14;
+    var pageWidth = doc.internal.pageSize.width ? doc.internal.pageSize.width : 210;
+    var pageHeight = doc.internal.pageSize.height ? doc.internal.pageSize.height : 297;
+
+    if (!columnWidths.length) {
+      var colWidth = (pageWidth - margin * 2) / headers.length;
+      for (var i = 0; i < headers.length; i++) {
+        columnWidths.push(colWidth);
+      }
+    }
+
+    var totalWidth = 0;
+    for (var i = 0; i < columnWidths.length; i++) {
+      totalWidth += columnWidths[i];
+    }
+
+    var currentY = startY;
+
+    function ensureSpace(height) {
+      if (currentY + height > pageHeight - margin) {
+        doc.addPage();
+        currentY = margin;
+        return true;
+      }
+      return false;
+    }
+
+    function drawHeader() {
+      doc.setFillColor(headerFillColor[0], headerFillColor[1], headerFillColor[2]);
+      doc.rect(x, currentY, totalWidth, rowHeight, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(headerFontSize);
+      doc.setTextColor(headerTextColor[0], headerTextColor[1], headerTextColor[2]);
+
+      var cellX = x;
+      for (var i = 0; i < headers.length; i++) {
+        var colWidth = columnWidths[i];
+        var text = String(headers[i] || '');
+        var textWidth = doc.getTextWidth(text);
+        var textX = cellX + (colWidth - textWidth) / 2;
+        doc.text(text, textX, currentY + rowHeight / 2 + headerFontSize / 3);
+        cellX += colWidth;
+      }
+
+      doc.setDrawColor(lineColor[0], lineColor[1], lineColor[2]);
+      doc.setLineWidth(0.2);
+      doc.rect(x, currentY, totalWidth, rowHeight);
+
+      currentY += rowHeight;
+    }
+
+    function drawRow(row) {
+      var rowStartY = currentY;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(fontSize);
+      doc.setTextColor(30, 30, 30);
+
+      var lineHeight = fontSize * 0.45;
+      var maxLines = Math.max(1, Math.floor(rowHeight / lineHeight));
+
+      var cellX = x;
+      for (var i = 0; i < row.length; i++) {
+        var colWidth = columnWidths[i] || 0;
+        var text = String(row[i] || '');
+        var maxTextWidth = colWidth - 2;
+        var lines = doc.splitTextToSize(text, maxTextWidth);
+
+        if (lines.length > maxLines) {
+          lines = lines.slice(0, maxLines);
+          var lastLine = lines[maxLines - 1];
+          if (lastLine.length > 3) {
+            lines[maxLines - 1] = lastLine.substring(0, lastLine.length - 2) + '..';
+          }
+        }
+
+        var textY = rowStartY + rowHeight / 2 - ((lines.length - 1) * lineHeight) / 2 + lineHeight / 3;
+        for (var j = 0; j < lines.length; j++) {
+          doc.text(lines[j], cellX + 1, textY + j * lineHeight);
+        }
+
+        cellX += colWidth;
+      }
+
+      doc.setDrawColor(lineColor[0], lineColor[1], lineColor[2]);
+      doc.setLineWidth(0.1);
+      doc.rect(x, rowStartY, totalWidth, rowHeight);
+
+      cellX = x;
+      for (var i = 1; i < row.length; i++) {
+        cellX += columnWidths[i - 1] || 0;
+        doc.line(cellX, rowStartY, cellX, rowStartY + rowHeight);
+      }
+
+      currentY += rowHeight;
+    }
+
+    drawHeader();
+
+    for (var r = 0; r < rows.length; r++) {
+      if (ensureSpace(rowHeight)) {
+        drawHeader();
+      }
+      drawRow(rows[r]);
+    }
+
+    return currentY;
   }
 
   function generateAnalyticsPdf() {
@@ -3288,9 +3408,7 @@
       var totalStaff = scopedUsers.length;
 
       var verifiedUserIds = new Set();
-      var lateCount = 0;
-      var blockedCount = 0;
-      var failedCount = 0;
+      var lateCount = 0, blockedCount = 0, failedCount = 0;
 
       filteredRecords.forEach(function(r) {
         var status = getAttendanceStatus(r);
@@ -3351,16 +3469,16 @@
         ['Location Compliance', locationCompliance + '%']
       ];
 
-      doc.autoTable({
-        head: [['Metric', 'Value']],
-        body: kpiData,
-        startY: yPos,
-        theme: 'grid',
-        styles: { fontSize: 9, cellPadding: 3 },
-        headStyles: { fillColor: [75, 83, 32] }
+      yPos = drawPdfTable(doc, {
+        headers: ['Metric', 'Value'],
+        rows: kpiData,
+        y: yPos,
+        columnWidths: [100, 80],
+        rowHeight: 8,
+        fontSize: 9
       });
 
-      yPos = doc.lastAutoTable.finalY + 14;
+      yPos += 12;
 
       var deptData = getAnalyticsDepartmentData(filteredRecords, users);
       if (deptData.length > 0) {
@@ -3373,16 +3491,16 @@
           return [d.dept, d.total, d.present, d.late, d.absent, d.rate + '%'];
         });
 
-        doc.autoTable({
-          head: [['Department', 'Personnel', 'Verified', 'Late', 'Absent', 'Rate']],
-          body: deptBody,
-          startY: yPos,
-          theme: 'grid',
-          styles: { fontSize: 8, cellPadding: 2 },
-          headStyles: { fillColor: [75, 83, 32] }
+        yPos = drawPdfTable(doc, {
+          headers: ['Department', 'Personnel', 'Verified', 'Late', 'Absent', 'Rate'],
+          rows: deptBody,
+          y: yPos,
+          columnWidths: [60, 35, 35, 35, 35, 30],
+          rowHeight: 8,
+          fontSize: 8
         });
 
-        yPos = doc.lastAutoTable.finalY + 14;
+        yPos += 12;
       }
 
       doc.setFontSize(12);
@@ -3417,29 +3535,26 @@
           ];
         });
 
-        doc.autoTable({
-          head: [['Employee ID', 'Name', 'Department', 'Appointment', 'Date', 'Time', 'Status', 'Location', 'Distance']],
-          body: recordBody,
-          startY: yPos,
-          theme: 'grid',
-          styles: { fontSize: 7, cellPadding: 2 },
-          headStyles: { fillColor: [75, 83, 32] },
-          didDrawPage: function(data) {
-            try {
-              doc.setFontSize(8);
-              doc.setTextColor(150);
-              var marginLeft = (data && data.settings && data.settings.margin) ? data.settings.margin.left : 14;
-              var pageHeight = (doc.internal && doc.internal.pageSize) ? doc.internal.pageSize.height : 297;
-              doc.text('Page ' + doc.internal.getNumberOfPages(), marginLeft, pageHeight - 10);
-            } catch (pageError) {
-              // Ignore page-numbering errors so the PDF still downloads
-            }
-          }
+        yPos = drawPdfTable(doc, {
+          headers: ['Employee ID', 'Name', 'Department', 'Appointment', 'Date', 'Time', 'Status', 'Location', 'Distance'],
+          rows: recordBody,
+          y: yPos,
+          columnWidths: [28, 32, 32, 32, 26, 24, 22, 24, 22],
+          rowHeight: 7,
+          fontSize: 7
         });
       } else {
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
         doc.text('No attendance records found for the selected filters.', 14, yPos);
+      }
+
+      var totalPages = doc.internal.getNumberOfPages();
+      for (var p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text('Page ' + p + ' of ' + totalPages, 14, doc.internal.pageSize.height - 10);
       }
 
       var fileName = 'BioTrack_Analytics_' + startDateStr + '_' + endDateStr + '.pdf';
@@ -4216,26 +4331,30 @@
       pdfBtn.textContent = 'Generating...';
     }
 
-    var checkAndGenerate = function() {
-      if (window.jspdf && window.jspdf.jsPDF) {
-        var checkAutotable;
-        try {
-          checkAutotable = window.jspdf.jsPDF.prototype && typeof window.jspdf.jsPDF.prototype.autoTable !== 'undefined';
-        } catch(e) {
-          checkAutotable = false;
-        }
-
-        if (checkAutotable) {
-          generateReportsPdf();
-        } else {
-          setTimeout(checkAndGenerate, 100);
-        }
-      } else {
-        setTimeout(checkAndGenerate, 100);
+    var pdfTimeout = setTimeout(function() {
+      showStatus('PDF generation timed out after 30 seconds.', 'error');
+      if (pdfBtn) {
+        pdfBtn.disabled = false;
+        pdfBtn.textContent = 'Export PDF';
       }
-    };
+    }, 30000);
 
-    setTimeout(checkAndGenerate, 100);
+    try {
+      if (!window.jspdf || !window.jspdf.jsPDF) {
+        throw new Error('PDF export unavailable: jsPDF library is not loaded.');
+      }
+
+      generateReportsPdf();
+    } catch (e) {
+      console.error('Reports: PDF export failed', e);
+      showStatus('PDF export failed: ' + getErrorMessage(e), 'error');
+    } finally {
+      clearTimeout(pdfTimeout);
+      if (pdfBtn) {
+        pdfBtn.disabled = false;
+        pdfBtn.textContent = 'Export PDF';
+      }
+    }
   }
 
   function generateReportsPdf() {
@@ -4247,7 +4366,6 @@
 
       var doc = new window.jspdf.jsPDF();
 
-      // Header
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
       doc.text('BioTrack Attendance Report', 14, 22);
@@ -4258,7 +4376,6 @@
       doc.text('Generated: ' + data.generatedDate, 14, 38);
       doc.text('Filters: ' + (data.filterDesc ? data.filterDesc.trim() : 'None'), 14, 44);
 
-      // KPI Summary
       var yPos = 52;
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
@@ -4274,18 +4391,17 @@
         ['Attendance Rate', kpis.attendanceRate + '%']
       ];
 
-      doc.autoTable({
-        head: [['Metric', 'Value']],
-        body: kpiData,
-        startY: yPos,
-        theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [75, 83, 32] }
+      yPos = drawPdfTable(doc, {
+        headers: ['Metric', 'Value'],
+        rows: kpiData,
+        y: yPos,
+        columnWidths: [80, 60],
+        rowHeight: 8,
+        fontSize: 8
       });
 
-      yPos = doc.lastAutoTable.finalY + 12;
+      yPos += 12;
 
-      // Department Performance
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
       doc.text('Department Performance', 14, yPos);
@@ -4296,19 +4412,18 @@
           return [d.dept, d.personnel, d.verified, d.late, d.blocked, d.absent, d.rate + '%'];
         });
 
-        doc.autoTable({
-          head: [['Department', 'Personnel', 'Verified', 'Late', 'Blocked', 'Absent', 'Rate']],
-          body: deptBody,
-          startY: yPos,
-          theme: 'grid',
-          styles: { fontSize: 7, cellPadding: 1.5 },
-          headStyles: { fillColor: [75, 83, 32] }
+        yPos = drawPdfTable(doc, {
+          headers: ['Department', 'Personnel', 'Verified', 'Late', 'Blocked', 'Absent', 'Rate'],
+          rows: deptBody,
+          y: yPos,
+          columnWidths: [50, 28, 28, 28, 28, 28, 20],
+          rowHeight: 7,
+          fontSize: 7
         });
 
-        yPos = doc.lastAutoTable.finalY + 12;
+        yPos += 12;
       }
 
-      // Attendance Records (multi-page autoTable)
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
       doc.text('Attendance Records', 14, yPos);
@@ -4335,18 +4450,26 @@
           ];
         });
 
-        doc.autoTable({
-          head: [['Employee ID', 'Name', 'Department', 'Appointment', 'Date', 'Time', 'Status', 'Location', 'Distance']],
-          body: recordBody,
-          startY: yPos,
-          theme: 'grid',
-          styles: { fontSize: 6.5, cellPadding: 1.5 },
-          headStyles: { fillColor: [75, 83, 32] }
+        yPos = drawPdfTable(doc, {
+          headers: ['Employee ID', 'Name', 'Department', 'Appointment', 'Date', 'Time', 'Status', 'Location', 'Distance'],
+          rows: recordBody,
+          y: yPos,
+          columnWidths: [28, 30, 30, 30, 24, 22, 22, 22, 22],
+          rowHeight: 6.5,
+          fontSize: 6.5
         });
       } else {
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
         doc.text('No attendance records found for the selected filters.', 14, yPos);
+      }
+
+      var totalPages = doc.internal.getNumberOfPages();
+      for (var p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text('Page ' + p + ' of ' + totalPages, 14, doc.internal.pageSize.height - 10);
       }
 
       var fileName = 'BioTrack_Report_' + data.rangeStart + '_' + data.rangeEnd + '.pdf';
@@ -4355,13 +4478,8 @@
     } catch (e) {
       console.error('Reports: PDF export failed', e);
       showStatus('PDF export failed: ' + getErrorMessage(e), 'error');
-    } finally {
-      if (pdfBtn) {
-        pdfBtn.disabled = false;
-        pdfBtn.textContent = 'Export PDF';
-      }
     }
-   }
+  }
 
   async function generateReportsReport() {
     var range = getReportsDateRange(reportsState.period, reportsState.customRange);
