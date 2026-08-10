@@ -3241,26 +3241,32 @@
       pdfBtn.textContent = 'Generating...';
     }
 
-    var checkAndGenerate = function() {
-      if (window.jspdf && window.jspdf.jsPDF) {
-        var checkAutotable;
-        try {
-          checkAutotable = window.jspdf.jsPDF.prototype && typeof window.jspdf.jsPDF.prototype.autoTable !== 'undefined';
-        } catch(e) {
-          checkAutotable = false;
-        }
-
-        if (checkAutotable) {
-          generateAnalyticsPdf();
-        } else {
-          setTimeout(checkAndGenerate, 100);
-        }
-      } else {
-        setTimeout(checkAndGenerate, 100);
+    try {
+      if (!window.jspdf || !window.jspdf.jsPDF) {
+        throw new Error('PDF export unavailable: jsPDF library is not loaded.');
       }
-    };
 
-    setTimeout(checkAndGenerate, 100);
+      var checkAutotable;
+      try {
+        checkAutotable = window.jspdf.jsPDF.prototype && typeof window.jspdf.jsPDF.prototype.autoTable !== 'undefined';
+      } catch (e) {
+        checkAutotable = false;
+      }
+
+      if (!checkAutotable) {
+        throw new Error('PDF export unavailable: autoTable plugin is not loaded.');
+      }
+
+      generateAnalyticsPdf();
+    } catch (e) {
+      console.error('Analytics: PDF export failed', e);
+      showAnalyticsError('analyticsKpiCards', 'PDF export failed: ' + (e.message || e));
+    } finally {
+      if (pdfBtn) {
+        pdfBtn.disabled = false;
+        pdfBtn.textContent = 'Export PDF';
+      }
+    }
   }
 
   function generateAnalyticsPdf() {
@@ -3419,9 +3425,15 @@
           styles: { fontSize: 7, cellPadding: 2 },
           headStyles: { fillColor: [75, 83, 32] },
           didDrawPage: function(data) {
-            doc.setFontSize(8);
-            doc.setTextColor(150);
-            doc.text('Page ' + doc.internal.getNumberOfPages(), data.settings.margin.left, doc.internal.pageSize.height - 10);
+            try {
+              doc.setFontSize(8);
+              doc.setTextColor(150);
+              var marginLeft = (data && data.settings && data.settings.margin) ? data.settings.margin.left : 14;
+              var pageHeight = (doc.internal && doc.internal.pageSize) ? doc.internal.pageSize.height : 297;
+              doc.text('Page ' + doc.internal.getNumberOfPages(), marginLeft, pageHeight - 10);
+            } catch (pageError) {
+              // Ignore page-numbering errors so the PDF still downloads
+            }
           }
         });
       } else {
