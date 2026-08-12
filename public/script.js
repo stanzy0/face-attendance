@@ -227,6 +227,82 @@ function clearRegisterForm() {
 }
 
 // EXPORT FUNCTIONS
+function getRestrictedExcelBrandingRows(title) {
+  var reportTitle = title || 'Attendance Report';
+  return [
+    ['RESTRICTED'],
+    [],
+    [reportTitle],
+    [],
+    ['Unauthorized disclosure, transmission, reproduction or retention of information on this sheet violates the Official CAP 03 (LFN) 2004.']
+  ];
+}
+
+function configureRestrictedExcelPrintSettings(wb, ws) {
+  if (!ws || !wb) return;
+  ws['!header'] = '&C&"Arial,bold"RESTRICTED';
+  ws['!footer'] = '&CPage &P of &N';
+  ws['!pageSetup'] = ws['!pageSetup'] || {};
+  ws['!pageSetup'].orientation = 'landscape';
+  ws['!pageSetup'].fitToPage = true;
+  ws['!pageSetup'].fitToWidth = 1;
+  ws['!pageSetup'].fitToHeight = 0;
+  ws['!pageSetup'].paperSize = 9;
+}
+
+function drawRestrictedPdfPageHeader(doc, reportTitle) {
+  var pageWidth = doc.internal.pageSize.width ? doc.internal.pageSize.width : 210;
+
+  doc.setFillColor(180, 30, 30);
+  doc.rect(14, 6, pageWidth - 28, 7, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text('RESTRICTED', pageWidth / 2, 11, { align: 'center' });
+
+  try {
+    doc.addImage('assets/afcsc logo.png', 'PNG', 14, 15, 16, 16);
+    doc.addImage('assets/army logo.png', 'PNG', pageWidth - 30, 15, 16, 16);
+  } catch (e) {
+    // Logo loading failed
+  }
+
+  doc.setFontSize(11);
+  doc.setTextColor(30, 30, 30);
+  doc.setFont('helvetica', 'bold');
+  doc.text('BioTrack', 14, 36);
+
+  if (reportTitle) {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(reportTitle, 14, 42);
+  }
+}
+
+function drawRestrictedPdfPageFooter(doc, pageNum, totalPages) {
+  var pageHeight = doc.internal.pageSize.height ? doc.internal.pageSize.height : 297;
+  var pageWidth = doc.internal.pageSize.width ? doc.internal.pageSize.width : 210;
+
+  doc.setFontSize(6);
+  doc.setTextColor(100, 100, 100);
+  doc.setFont('helvetica', 'normal');
+  var disclaimer = 'Unauthorized disclosure, transmission, reproduction or retention of information on this sheet violates the Official CAP 03 (LFN) 2004.';
+  doc.text(disclaimer, pageWidth / 2, pageHeight - 28, { align: 'center', maxWidth: pageWidth - 28 });
+
+  doc.setFillColor(180, 30, 30);
+  doc.rect(14, pageHeight - 18, pageWidth - 28, 7, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text('RESTRICTED', pageWidth / 2, pageHeight - 13, { align: 'center' });
+
+  doc.setFontSize(8);
+  doc.setTextColor(80, 80, 80);
+  doc.text('Page ' + pageNum + ' of ' + totalPages, pageWidth / 2, pageHeight - 5, { align: 'center' });
+}
+
 async function exportExcel() {
   const dateInput = document.getElementById('attendanceDate');
   const date = dateInput ? dateInput.value : new Date().toISOString().split('T')[0];
@@ -254,8 +330,22 @@ async function exportExcel() {
     });
     
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(data);
+    const brandingRows = getRestrictedExcelBrandingRows('Daily Attendance');
+    const wsData = brandingRows.concat(data.map(function(d) {
+      return [
+        d['User ID'] || '',
+        d['Name'] || '',
+        d['Department'] || '',
+        d['Appointment'] || '',
+        d['GPS Lat'] || '',
+        d['GPS Lng'] || '',
+        d['Time'] || '',
+        d['Action'] || ''
+      ];
+    }));
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
     XLSX.utils.book_append_sheet(wb, ws, `${date} Attendance`);
+    configureRestrictedExcelPrintSettings(wb, ws);
     XLSX.writeFile(wb, `Attendance_${date}.xlsx`);
     showStatus('Excel exported! Check downloads', 'success');
   } catch (e) {
@@ -293,8 +383,20 @@ async function exportAbsentExcel() {
     }
     
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(absentData);
+    const brandingRows = getRestrictedExcelBrandingRows('Absent Staff Report');
+    const wsData = brandingRows.concat(absentData.map(function(user) {
+      return [
+        user['User ID'] || '',
+        user['Name'] || '',
+        user['Department'] || '',
+        user['Appointment'] || '',
+        user['Status'] || 'ABSENT',
+        user['Report Date'] || date
+      ];
+    }));
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
     XLSX.utils.book_append_sheet(wb, ws, `${date} Absent Staff`);
+    configureRestrictedExcelPrintSettings(wb, ws);
     XLSX.writeFile(wb, `Absent_Staff_${date}.xlsx`);
     showStatus(`Absent Excel exported (${absentData.length} staff)!`, 'success');
   } catch (e) {
@@ -325,9 +427,11 @@ function exportPdf() {
 function generatePdf(doc) {
   const dateInput = document.getElementById('attendanceDate');
   const date = dateInput ? dateInput.value : new Date().toISOString().split('T')[0];
-  
+
   showStatus('Generating PDF...', 'info');
-  
+
+  drawRestrictedPdfPageHeader(doc, 'Daily Attendance Report');
+
   db.collection('attendance')
     .where('date', '==', date)
     .get()
@@ -344,19 +448,25 @@ function generatePdf(doc) {
           d.timestamp?.toDate ? d.timestamp.toDate().toLocaleString() : ''
         ]);
       });
-      
+
       doc.setFontSize(16);
-      doc.text(`Attendance Report - ${date}`, 14, 22);
-      
+      doc.text(`Attendance Report - ${date}`, 14, 52);
+
       doc.autoTable({
         head: [['User ID', 'Name', 'Dept', 'Appt', 'GPS', 'Time']],
         body: tableData,
-        startY: 30,
+        startY: 58,
         theme: 'grid',
         styles: { fontSize: 8, cellPadding: 2 },
         headStyles: { fillColor: [75, 83, 32] }
       });
-      
+
+      var totalPages = doc.internal.getNumberOfPages();
+      for (var p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        drawRestrictedPdfPageFooter(doc, p, totalPages);
+      }
+
       doc.save(`Attendance_${date}.pdf`);
       showStatus('PDF exported! Check downloads', 'success');
     })

@@ -1818,6 +1818,29 @@
     refreshAttendanceView();
   }
 
+  function getRestrictedExcelBrandingRows(title) {
+    var reportTitle = title || 'Attendance Report';
+    return [
+      ['RESTRICTED'],
+      [],
+      [reportTitle],
+      [],
+      ['Unauthorized disclosure, transmission, reproduction or retention of information on this sheet violates the Official CAP 03 (LFN) 2004.']
+    ];
+  }
+
+  function configureRestrictedExcelPrintSettings(wb, ws) {
+    if (!ws || !wb) return;
+    ws['!header'] = '&C&"Arial,bold"RESTRICTED';
+    ws['!footer'] = '&CPage &P of &N';
+    ws['!pageSetup'] = ws['!pageSetup'] || {};
+    ws['!pageSetup'].orientation = 'landscape';
+    ws['!pageSetup'].fitToPage = true;
+    ws['!pageSetup'].fitToWidth = 1;
+    ws['!pageSetup'].fitToHeight = 0;
+    ws['!pageSetup'].paperSize = 9;
+  }
+
   function exportAttendanceFiltered() {
     var records = attendanceState.records || [];
     var users = attendanceState.users || [];
@@ -1861,8 +1884,25 @@
     showStatus('Generating Excel...', 'info');
     try {
       var wb = XLSX.utils.book_new();
-      var ws = XLSX.utils.json_to_sheet(data);
+      var brandingRows = getRestrictedExcelBrandingRows('Attendance Export');
+      var wsData = brandingRows.concat(data.map(function(r) {
+        return [
+          r['Employee ID'] || '',
+          r['Name'] || '',
+          r['Department'] || '',
+          r['Appointment'] || '',
+          r['Date'] || '',
+          r['Time'] || '',
+          r['Status'] || '',
+          r['Face Verification'] || '',
+          r['Location'] || '',
+          r['Distance (m)'] || '',
+          r['Action'] || ''
+        ];
+      }));
+      var ws = XLSX.utils.aoa_to_sheet(wsData);
       XLSX.utils.book_append_sheet(wb, ws, 'Attendance Export');
+      configureRestrictedExcelPrintSettings(wb, ws);
       XLSX.writeFile(wb, 'Attendance_Export_' + formatDate(new Date()) + '.xlsx');
       showStatus('Excel exported (' + data.length + ' records)', 'success');
     } catch (e) {
@@ -3267,6 +3307,59 @@
     }
   }
 
+  function drawRestrictedPdfPageHeader(doc, reportTitle) {
+    var pageWidth = doc.internal.pageSize.width ? doc.internal.pageSize.width : 210;
+
+    doc.setFillColor(180, 30, 30);
+    doc.rect(14, 6, pageWidth - 28, 7, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(255, 255, 255);
+    doc.text('RESTRICTED', pageWidth / 2, 11, { align: 'center' });
+
+    try {
+      doc.addImage('assets/afcsc logo.png', 'PNG', 14, 15, 16, 16);
+      doc.addImage('assets/army logo.png', 'PNG', pageWidth - 30, 15, 16, 16);
+    } catch (e) {
+      // Logo loading failed - continue with text branding
+    }
+
+    doc.setFontSize(11);
+    doc.setTextColor(30, 30, 30);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BioTrack', 14, 36);
+
+    if (reportTitle) {
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(reportTitle, 14, 42);
+    }
+  }
+
+  function drawRestrictedPdfPageFooter(doc, pageNum, totalPages) {
+    var pageHeight = doc.internal.pageSize.height ? doc.internal.pageSize.height : 297;
+    var pageWidth = doc.internal.pageSize.width ? doc.internal.pageSize.width : 210;
+
+    doc.setFontSize(6);
+    doc.setTextColor(100, 100, 100);
+    doc.setFont('helvetica', 'normal');
+    var disclaimer = 'Unauthorized disclosure, transmission, reproduction or retention of information on this sheet violates the Official CAP 03 (LFN) 2004.';
+    doc.text(disclaimer, pageWidth / 2, pageHeight - 28, { align: 'center', maxWidth: pageWidth - 28 });
+
+    doc.setFillColor(180, 30, 30);
+    doc.rect(14, pageHeight - 18, pageWidth - 28, 7, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(255, 255, 255);
+    doc.text('RESTRICTED', pageWidth / 2, pageHeight - 13, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setTextColor(80, 80, 80);
+    doc.text('Page ' + pageNum + ' of ' + totalPages, pageWidth / 2, pageHeight - 5, { align: 'center' });
+  }
+
   function drawPdfTable(doc, options) {
     var headers = options.headers || [];
     var rows = options.rows || [];
@@ -3282,6 +3375,7 @@
     var margin = options.margin != null ? options.margin : 14;
     var pageWidth = doc.internal.pageSize.width ? doc.internal.pageSize.width : 210;
     var pageHeight = doc.internal.pageSize.height ? doc.internal.pageSize.height : 297;
+    var footerReserve = options.footerReserve != null ? options.footerReserve : 28;
 
     if (!columnWidths.length) {
       var colWidth = (pageWidth - margin * 2) / headers.length;
@@ -3298,9 +3392,14 @@
     var currentY = startY;
 
     function ensureSpace(height) {
-      if (currentY + height > pageHeight - margin) {
+      if (currentY + height > pageHeight - margin - footerReserve) {
         doc.addPage();
-        currentY = margin;
+        if (typeof options.onNewPage === 'function') {
+          options.onNewPage(doc);
+          currentY = 50;
+        } else {
+          currentY = margin;
+        }
         return true;
       }
       return false;
@@ -3440,19 +3539,15 @@
 
       var doc = new window.jspdf.jsPDF();
 
-      doc.setFontSize(18);
-      doc.setFont('helvetica', 'bold');
-      doc.text('BioTrack', 14, 22);
+      drawRestrictedPdfPageHeader(doc, 'Attendance Analytics Report');
+
       doc.setFontSize(11);
       doc.setFont('helvetica', 'normal');
-      doc.text('Attendance Analytics Report', 14, 30);
+      doc.text('Date Range: ' + startDateStr + ' - ' + endDateStr, 14, 52);
+      doc.text('Generated: ' + new Date().toLocaleString(), 14, 58);
+      doc.text('Department: ' + (department || 'All Departments'), 14, 64);
 
-      doc.setFontSize(9);
-      doc.text('Date Range: ' + startDateStr + ' - ' + endDateStr, 14, 38);
-      doc.text('Generated: ' + new Date().toLocaleString(), 14, 44);
-      doc.text('Department: ' + (department || 'All Departments'), 14, 50);
-
-      var yPos = 58;
+      var yPos = 72;
       doc.setFontSize(12);
       doc.setFont('helvetica', 'bold');
       doc.text('KPI Summary', 14, yPos);
@@ -3475,7 +3570,10 @@
         y: yPos,
         columnWidths: [100, 80],
         rowHeight: 8,
-        fontSize: 9
+        fontSize: 9,
+        onNewPage: function(pageDoc) {
+          drawRestrictedPdfPageHeader(pageDoc, 'Attendance Analytics Report');
+        }
       });
 
       yPos += 12;
@@ -3497,7 +3595,10 @@
           y: yPos,
           columnWidths: [60, 35, 35, 35, 35, 30],
           rowHeight: 8,
-          fontSize: 8
+          fontSize: 8,
+          onNewPage: function(pageDoc) {
+            drawRestrictedPdfPageHeader(pageDoc, 'Attendance Analytics Report');
+          }
         });
 
         yPos += 12;
@@ -3541,7 +3642,10 @@
           y: yPos,
           columnWidths: [28, 32, 32, 32, 26, 24, 22, 24, 22],
           rowHeight: 7,
-          fontSize: 7
+          fontSize: 7,
+          onNewPage: function(pageDoc) {
+            drawRestrictedPdfPageHeader(pageDoc, 'Attendance Analytics Report');
+          }
         });
       } else {
         doc.setFontSize(9);
@@ -3552,9 +3656,7 @@
       var totalPages = doc.internal.getNumberOfPages();
       for (var p = 1; p <= totalPages; p++) {
         doc.setPage(p);
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text('Page ' + p + ' of ' + totalPages, 14, doc.internal.pageSize.height - 10);
+        drawRestrictedPdfPageFooter(doc, p, totalPages);
       }
 
       var fileName = 'BioTrack_Analytics_' + startDateStr + '_' + endDateStr + '.pdf';
@@ -4233,8 +4335,8 @@
       var wb = XLSX.utils.book_new();
 
       // Summary Sheet
-      var summaryData = [
-        ['BioTrack Attendance Report'],
+      var summaryData = getRestrictedExcelBrandingRows('BioTrack Attendance Report');
+      summaryData = summaryData.concat([
         [],
         ['Report Metadata'],
         ['Date Range Start', data.rangeStart],
@@ -4251,23 +4353,27 @@
         ['Present', kpis.present],
         ['Absent', kpis.absent],
         ['Attendance Rate', kpis.attendanceRate + '%']
-      ];
+      ]);
 
       var summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
       XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+      configureRestrictedExcelPrintSettings(wb, summaryWs);
 
       // Department Performance Sheet
       if (deptStats && deptStats.length > 0) {
+        var deptHeaderRows = getRestrictedExcelBrandingRows('Department Performance');
         var deptHeaders = [['Department', 'Personnel', 'Verified', 'Late', 'Blocked', 'Absent', 'Rate']];
         var deptRows = deptStats.map(function(d) {
           return [d.dept, d.personnel, d.verified, d.late, d.blocked, d.absent, d.rate + '%'];
         });
-        var deptWs = XLSX.utils.aoa_to_sheet(deptHeaders.concat(deptRows));
+        var deptWs = XLSX.utils.aoa_to_sheet(deptHeaderRows.concat(deptHeaders).concat(deptRows));
         XLSX.utils.book_append_sheet(wb, deptWs, 'Department Performance');
+        configureRestrictedExcelPrintSettings(wb, deptWs);
       }
 
       // Records Sheet
       if (filtered.length > 0) {
+        var recordHeaderRows = getRestrictedExcelBrandingRows('Attendance Records');
         var recordHeaders = [{
           'Employee ID': 'Employee ID',
           'Name': 'Name',
@@ -4301,8 +4407,9 @@
           };
         });
 
-        var recordsWs = XLSX.utils.json_to_sheet(recordHeaders.concat(recordRows));
+        var recordsWs = XLSX.utils.json_to_sheet(recordHeaderRows.concat(recordRows));
         XLSX.utils.book_append_sheet(wb, recordsWs, 'Attendance Records');
+        configureRestrictedExcelPrintSettings(wb, recordsWs);
       }
 
       var fileName = 'BioTrack_Report_' + data.rangeStart + '_' + data.rangeEnd + '.xlsx';
@@ -4366,17 +4473,15 @@
 
       var doc = new window.jspdf.jsPDF();
 
-      doc.setFontSize(16);
-      doc.setFont('helvetica', 'bold');
-      doc.text('BioTrack Attendance Report', 14, 22);
+      drawRestrictedPdfPageHeader(doc, 'Attendance Report');
 
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
-      doc.text('Date Range: ' + data.rangeStart + ' - ' + data.rangeEnd, 14, 32);
-      doc.text('Generated: ' + data.generatedDate, 14, 38);
-      doc.text('Filters: ' + (data.filterDesc ? data.filterDesc.trim() : 'None'), 14, 44);
+      doc.text('Date Range: ' + data.rangeStart + ' - ' + data.rangeEnd, 14, 52);
+      doc.text('Generated: ' + data.generatedDate, 14, 58);
+      doc.text('Filters: ' + (data.filterDesc ? data.filterDesc.trim() : 'None'), 14, 64);
 
-      var yPos = 52;
+      var yPos = 72;
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
       doc.text('Summary', 14, yPos);
@@ -4397,7 +4502,10 @@
         y: yPos,
         columnWidths: [80, 60],
         rowHeight: 8,
-        fontSize: 8
+        fontSize: 8,
+        onNewPage: function(pageDoc) {
+          drawRestrictedPdfPageHeader(pageDoc, 'Attendance Report');
+        }
       });
 
       yPos += 12;
@@ -4418,7 +4526,10 @@
           y: yPos,
           columnWidths: [50, 28, 28, 28, 28, 28, 20],
           rowHeight: 7,
-          fontSize: 7
+          fontSize: 7,
+          onNewPage: function(pageDoc) {
+            drawRestrictedPdfPageHeader(pageDoc, 'Attendance Report');
+          }
         });
 
         yPos += 12;
@@ -4456,7 +4567,10 @@
           y: yPos,
           columnWidths: [28, 30, 30, 30, 24, 22, 22, 22, 22],
           rowHeight: 6.5,
-          fontSize: 6.5
+          fontSize: 6.5,
+          onNewPage: function(pageDoc) {
+            drawRestrictedPdfPageHeader(pageDoc, 'Attendance Report');
+          }
         });
       } else {
         doc.setFontSize(9);
@@ -4467,9 +4581,7 @@
       var totalPages = doc.internal.getNumberOfPages();
       for (var p = 1; p <= totalPages; p++) {
         doc.setPage(p);
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text('Page ' + p + ' of ' + totalPages, 14, doc.internal.pageSize.height - 10);
+        drawRestrictedPdfPageFooter(doc, p, totalPages);
       }
 
       var fileName = 'BioTrack_Report_' + data.rangeStart + '_' + data.rangeEnd + '.pdf';
