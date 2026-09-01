@@ -1735,19 +1735,23 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
   box-shadow: var(--shadow-xl);
-  max-width: 800px;
-  width: 90%;
+  width: 100%;
+  max-width: 860px;
+  max-width: calc(100vw - 32px);
   max-height: 90vh;
-  overflow-y: auto;
+  overflow: hidden;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .modal-title {
@@ -1779,12 +1783,15 @@ body {
 }
 
 .modal-body {
-  padding: var(--space-6);
+  padding: var(--space-5) var(--space-6);
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .profile-layout {
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: 240px minmax(0, 1fr);
   gap: var(--space-6);
   align-items: start;
 }
@@ -1837,12 +1844,14 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-4);
+  min-width: 0;
 }
 
 .profile-group {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  min-width: 0;
 }
 
 .profile-label {
@@ -1861,6 +1870,8 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   word-break: break-word;
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 
 .profile-value.face-registered {
@@ -1870,6 +1881,103 @@ body {
 
 .profile-value.face-not-registered {
   color: var(--text-muted);
+}
+
+/* === Modal Footer === */
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--border-color);
+  background-color: var(--bg-surface, #27331F);
+  flex-shrink: 0;
+}
+
+/* === Delete Button === */
+.btn-danger {
+  background-color: rgba(139, 30, 30, 0.85);
+  color: #fff;
+  border: 1px solid rgba(139, 30, 30, 0.5);
+}
+
+.btn-danger:hover {
+  background-color: rgba(139, 30, 30, 1);
+  border-color: rgba(139, 30, 30, 0.7);
+}
+
+.btn-danger:disabled {
+  background-color: var(--text-muted);
+  border-color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* === Delete Confirmation Overlay === */
+.delete-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: calc(var(--z-modal) + 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.delete-confirm-content {
+  background: var(--bg-surface, #27331F);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-xl);
+  max-width: 420px;
+  width: 90%;
+  padding: var(--space-6);
+  text-align: center;
+}
+
+.delete-confirm-title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-4);
+}
+
+.delete-confirm-message {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.delete-confirm-name {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+.delete-confirm-id {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+
+.delete-confirm-warning {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger-light);
+  font-style: italic;
+  margin-bottom: var(--space-5);
+  padding: var(--space-2);
+  background-color: rgba(139, 30, 30, 0.08);
+  border-radius: var(--border-radius-sm);
+  border: 1px solid rgba(139, 30, 30, 0.2);
+}
+
+.delete-confirm-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
 }
 
 /* === Registration Form === */
@@ -1982,6 +2090,15 @@ body {
 
   .profile-grid {
     grid-template-columns: 1fr;
+  }
+
+  .modal-footer {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .modal-footer .btn {
+    width: 100%;
   }
 
   .employees-header {

@@ -122,13 +122,13 @@
           <div class="admin-login-image-title">BioTrack</div>
           <div class="admin-login-image-subtitle">Secure Biometric Operations</div>
           <div style="font-size:0.7rem;color:var(--text-muted);margin-top:var(--space-2);letter-spacing:0.08em;text-transform:uppercase;">Department of Land Warfare</div>
-        </div>
-      </div>
-    </div>
-  </div>
+         </div>
+       </div>
+     </div>
+   </div>
 
-   <!-- Auth Loading Screen -->
-   <div id="adminAuthLoading" class="admin-auth-loading">
+  <!-- Auth Loading Screen -->
+  <div id="adminAuthLoading" class="admin-auth-loading">
      <div class="admin-auth-loading-content">
        <div class="admin-login-brand">
          <img src="assets/afcsc logo.png" alt="AFCSC" class="admin-login-brand-img" />
@@ -522,15 +522,34 @@
                       <label class="profile-label">Face Registration</label>
                       <span class="profile-value" id="profileFaceStatus"></span>
                     </div>
-                    <div class="profile-group">
-                      <label class="profile-label">Registered Location</label>
-                      <span class="profile-value" id="profileLocation"></span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+                     <div class="profile-group">
+                       <label class="profile-label">Registered Location</label>
+                       <span class="profile-value" id="profileLocation"></span>
+                     </div>
+                   </div>
+                 </div>
+               </div>
+               <div class="modal-footer">
+                 <button type="button" id="profileCloseBtn" class="btn btn-outline btn-sm" data-close="employeeProfileModal">Close</button>
+                 <button type="button" id="profileDeleteBtn" class="btn btn-danger btn-sm" data-action="delete-employee">Delete Employee</button>
+               </div>
+             </div>
+           </div>
+           <!-- Delete Confirmation Overlay -->
+           <div id="deleteConfirmOverlay" class="delete-confirm-overlay hidden" hidden>
+             <div class="delete-confirm-content">
+               <h3 class="delete-confirm-title">Delete Employee?</h3>
+               <p class="delete-confirm-message">
+                 Are you sure you want to delete <span id="deleteConfirmName" class="delete-confirm-name"></span>?
+               </p>
+               <p class="delete-confirm-id">Employee ID: <span id="deleteConfirmId"></span></p>
+               <p class="delete-confirm-warning">This will permanently remove the employee's registration and biometric data.</p>
+               <div class="delete-confirm-actions">
+                 <button type="button" id="deleteConfirmCancel" class="btn btn-outline btn-sm">Cancel</button>
+                 <button type="button" id="deleteConfirmBtn" class="btn btn-danger btn-sm">Delete Employee</button>
+               </div>
+             </div>
+           </div>
 
          <!-- Register Employee Section -->
           <section id="section-register" class="admin-section hidden" hidden>
@@ -693,10 +712,9 @@
                  <div class="skeleton" style="height:20px;width:80%;margin-bottom:8px;"></div>
                  <div class="skeleton" style="height:20px;width:60%;margin-top:12px;"></div>
                </div>
-             </div>
-           </div>
+              </div>
 
-           <!-- Hidden legacy buttons required by script.js window.export* functions -->
+            <!-- Hidden legacy buttons required by script.js window.export* functions -->
            <div id="reportsExportNav" hidden>
              <button id="exportExcelBtnNav" class="btn btn-success">Export Excel</button>
              <button id="exportPdfBtnNav" class="btn btn-primary">Export PDF</button>

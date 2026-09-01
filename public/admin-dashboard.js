@@ -16,6 +16,7 @@
     unsubscribeAnalyticsAttendance: null,
     analyticsAttendanceData: [],
     isLoading: false,
+    currentProfileEmpId: null,
     initialized: false,
     dashboardEl: null
   };
@@ -2153,18 +2154,22 @@
       btn.addEventListener('click', closeAttendanceDetailModal);
     });
 
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') {
-        var openModal = document.getElementById('attendanceDetailModal');
-        if (openModal && !openModal.classList.contains('hidden')) {
-          closeAttendanceDetailModal();
-        }
-        var empModal = document.getElementById('employeeProfileModal');
-        if (empModal && !empModal.classList.contains('hidden')) {
-          closeEmployeeProfile();
-        }
-      }
-    });
+     document.addEventListener('keydown', function(e) {
+       if (e.key === 'Escape') {
+         var deleteOverlay = document.getElementById('deleteConfirmOverlay');
+         if (deleteOverlay && !deleteOverlay.classList.contains('hidden')) {
+           closeDeleteConfirmation();
+         }
+         var openModal = document.getElementById('attendanceDetailModal');
+         if (openModal && !openModal.classList.contains('hidden')) {
+           closeAttendanceDetailModal();
+         }
+         var empModal = document.getElementById('employeeProfileModal');
+         if (empModal && !empModal.classList.contains('hidden')) {
+           closeEmployeeProfile();
+         }
+       }
+     });
   }
 
   async function loadAttendanceSectionNew() {
@@ -2312,6 +2317,9 @@
       return;
     }
 
+    // Track which employee is currently being viewed for delete operations
+    state.currentProfileEmpId = empId;
+
     var profileId = document.getElementById('profileEmployeeId');
     var profileName = document.getElementById('profileName');
     var profileDept = document.getElementById('profileDept');
@@ -2390,6 +2398,14 @@
       modal.setAttribute('hidden', 'hidden');
       document.body.style.overflow = '';
     }
+    state.currentProfileEmpId = null;
+    // Also close delete confirmation overlay if open
+    var overlay = document.getElementById('deleteConfirmOverlay');
+    if (overlay) {
+      overlay.classList.add('hidden');
+      overlay.setAttribute('hidden', 'hidden');
+    }
+    currentDeleteEmployee = null;
   }
 
   function setupEmployeeEventListeners() {
@@ -2425,6 +2441,164 @@
     closeBtns.forEach(function(btn) {
       btn.addEventListener('click', closeEmployeeProfile);
     });
+
+    // Delete Employee button in profile modal
+    var deleteBtn = document.getElementById('profileDeleteBtn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openDeleteConfirmation();
+      });
+    }
+
+    // Delete confirmation handlers
+    var confirmCancelBtn = document.getElementById('deleteConfirmCancel');
+    if (confirmCancelBtn) {
+      confirmCancelBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        closeDeleteConfirmation();
+      });
+    }
+
+    var confirmDeleteBtn = document.getElementById('deleteConfirmBtn');
+    if (confirmDeleteBtn) {
+      confirmDeleteBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        confirmDeleteEmployee();
+      });
+    }
+
+    // Close delete confirmation when clicking overlay or pressing Escape
+    var confirmOverlay = document.getElementById('deleteConfirmOverlay');
+    if (confirmOverlay) {
+      confirmOverlay.addEventListener('click', function(e) {
+        if (e.target === confirmOverlay) {
+          closeDeleteConfirmation();
+        }
+      });
+    }
+  }
+
+   // ============================================
+  // DELETE EMPLOYEE
+  // ============================================
+  var currentDeleteEmployee = null;
+  var DELETE_TIMEOUT_MS = 15000;
+
+  function createTimeoutPromise(ms) {
+    return new Promise(function(_, reject) {
+      setTimeout(function() {
+        reject(new Error('TIMEOUT'));
+      }, ms);
+    });
+  }
+
+  function openDeleteConfirmation() {
+    var user = findCurrentUserFromState();
+    if (!user) {
+      showStatus('No employee selected for deletion.', 'error');
+      return;
+    }
+
+    currentDeleteEmployee = user;
+    var nameEl = document.getElementById('deleteConfirmName');
+    var idEl = document.getElementById('deleteConfirmId');
+    if (nameEl) nameEl.textContent = user.name || user.userId || user.id || '--';
+    if (idEl) idEl.textContent = user.userId || user.id || '--';
+
+    var overlay = document.getElementById('deleteConfirmOverlay');
+    if (overlay) {
+      overlay.classList.remove('hidden');
+      overlay.removeAttribute('hidden');
+    }
+  }
+
+  function closeDeleteConfirmation() {
+    currentDeleteEmployee = null;
+    var overlay = document.getElementById('deleteConfirmOverlay');
+    if (overlay) {
+      overlay.classList.add('hidden');
+      overlay.setAttribute('hidden', 'hidden');
+    }
+  }
+
+  function findCurrentUserFromState() {
+    if (state.currentProfileEmpId) {
+      return state.usersData.find(function(u) {
+        return (u.userId || u.id || '') === state.currentProfileEmpId;
+      });
+    }
+    return null;
+  }
+
+  async function confirmDeleteEmployee() {
+    if (!currentDeleteEmployee) {
+      showStatus('No employee selected for deletion.', 'error');
+      return;
+    }
+
+    var db = getDb();
+    if (!db) {
+      showStatus('Database not ready. Please refresh.', 'error');
+      return;
+    }
+
+    var firestoreDocId = currentDeleteEmployee.id;
+    if (!firestoreDocId || typeof firestoreDocId !== 'string' || firestoreDocId.trim() === '') {
+      showStatus('Invalid employee record. Missing document ID.', 'error');
+      return;
+    }
+
+    var confirmBtn = document.getElementById('deleteConfirmBtn');
+    var deleteSuccess = false;
+    var errorMessage = '';
+
+    try {
+      if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Deleting...';
+      }
+
+      await Promise.race([
+        db.collection('users').doc(firestoreDocId).delete(),
+        createTimeoutPromise(DELETE_TIMEOUT_MS)
+      ]);
+
+      if (typeof invalidateUsersCache === 'function') {
+        invalidateUsersCache();
+      }
+
+      deleteSuccess = true;
+    } catch (e) {
+      console.error('Delete employee failed:', e);
+
+      if (e && e.message === 'TIMEOUT') {
+        errorMessage = 'Delete request timed out. Please check your connection and try again.';
+      } else if (e && (e.code === 'permission-denied' || (e.message && e.message.toLowerCase().indexOf('permission') !== -1))) {
+        errorMessage = 'Permission denied. You do not have permission to delete this employee.';
+      } else {
+        errorMessage = 'Failed to delete employee: ' + (e.message || e);
+      }
+    } finally {
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Delete Employee';
+      }
+    }
+
+    if (deleteSuccess) {
+      closeDeleteConfirmation();
+      closeEmployeeProfile();
+      if (typeof showStatus === 'function') {
+        showStatus('Employee deleted successfully.', 'success');
+      }
+      state.currentProfileEmpId = null;
+      currentDeleteEmployee = null;
+    } else {
+      if (typeof showStatus === 'function') {
+        showStatus(errorMessage, 'error');
+      }
+    }
   }
 
   function setupReportButtons() {

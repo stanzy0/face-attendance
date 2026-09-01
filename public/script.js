@@ -575,22 +575,67 @@ function invalidateUsersCache() {
 async function startCamera() {
   try {
     video = document.getElementById('video');
-    if (!video || !faceapi) return showStatus('Camera/Face-api not ready', 'error');
-    
-    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640 } });
-    
+
+    if (!video || !faceapi) {
+      return showStatus('Camera/Face-api not ready', 'error');
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showStatus(
+        'Camera access is not available in this browser/page. Please use HTTPS and a supported browser.',
+        'error'
+      );
+      console.error('Camera API unavailable:', {
+        isSecureContext: window.isSecureContext,
+        protocol: window.location.protocol,
+        mediaDevices: navigator.mediaDevices,
+        userAgent: navigator.userAgent
+      });
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'user',
+        width: { ideal: 640 },
+        height: { ideal: 480 }
+      },
+      audio: false
+    });
+
+    video.srcObject = stream;
+
     video.onloadedmetadata = () => {
       canvas = faceapi.createCanvasFromMedia(video);
       video.parentNode.append(canvas);
-      faceapi.matchDimensions(canvas, { width: video.videoWidth, height: video.videoHeight });
-      
+      faceapi.matchDimensions(canvas, {
+        width: video.videoWidth,
+        height: video.videoHeight
+      });
+
       const scanBtn = document.getElementById('scanBtn');
       if (scanBtn) scanBtn.disabled = false;
-      
+
       showStatus('Camera ready - Scan Face', 'success');
     };
   } catch (e) {
-    showStatus('Camera permission denied', 'error');
+    console.error('Camera error:', e.name, e.message, e);
+
+    if (e.name === 'NotAllowedError') {
+      showStatus('Camera permission was denied. Allow camera access in your browser.', 'error');
+    } else if (e.name === 'NotFoundError') {
+      showStatus('No camera was found on this device.', 'error');
+    } else if (e.name === 'NotReadableError') {
+      showStatus('Camera is being used by another application.', 'error');
+    } else if (e.name === 'OverconstrainedError') {
+      showStatus('The requested camera settings are not supported.', 'error');
+    } else if (e.name === 'SecurityError') {
+      showStatus('Camera access was blocked by browser security settings.', 'error');
+    } else if (e.name === 'TypeError') {
+      showStatus('Camera API not available. Ensure you are using HTTPS or localhost.', 'error');
+    } else {
+      showStatus('Unable to start camera: ' + (e.message || e.name), 'error');
+    }
   }
 }
 
