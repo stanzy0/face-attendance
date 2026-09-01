@@ -367,6 +367,14 @@
   }
 
   // === Location Tracking ===
+  function resetLocationUI() {
+    if (!locationBadge) return;
+    setBadge(locationBadge, 'checking', 'Checking');
+    if (locationDetails) locationDetails.classList.remove('visible');
+    if (locationState) locationState.textContent = 'Checking...';
+    if (locationAttendance) locationAttendance.textContent = 'Pending';
+  }
+
   function updateLocationUI() {
     // Access currentLocation from the global scope declared in script.js
     let loc;

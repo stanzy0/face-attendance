@@ -40,32 +40,50 @@ function getDistanceMeters(lat1, lng1, lat2, lng2) {
 // Location permission check
 async function verifyOfficeLocation() {
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject('Geolocation unavailable');
-    
+    if (!navigator.geolocation) {
+      console.error('GPS CHECK: Geolocation API not available');
+      return reject('Geolocation unavailable');
+    }
+
     navigator.geolocation.getCurrentPosition(
       position => {
         const { latitude: lat, longitude: lng, accuracy } = position.coords;
         const distance = getDistanceMeters(OFFICE_CENTER.lat, OFFICE_CENTER.lng, lat, lng);
-        
+
         currentLocation = { lat, lng, accuracy, distance };
-        console.log(`GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)} | Distance: ${distance.toFixed(0)}m | Allowed: ${distance <= MAX_DISTANCE_METERS}`);
-        
+
+        console.log('GPS CHECK:');
+        console.log('  Current: ' + lat.toFixed(6) + ', ' + lng.toFixed(6));
+        console.log('  Accuracy: ' + accuracy + ' m');
+        console.log('  Office: ' + OFFICE_CENTER.lat + ', ' + OFFICE_CENTER.lng);
+        console.log('  Distance: ' + distance.toFixed(1) + ' m');
+        console.log('  Allowed radius: ' + MAX_DISTANCE_METERS + ' m');
+        console.log('  Result: ' + (distance <= MAX_DISTANCE_METERS ? 'ALLOWED' : 'BLOCKED'));
+
         if (distance <= MAX_DISTANCE_METERS) {
-          showStatus(`✅ Office OK (${distance.toFixed(0)}m)`, 'success');
+          showStatus('✅ Office OK (' + distance.toFixed(0) + 'm)', 'success');
           resolve(currentLocation);
         } else {
           const distanceKm = (distance / 1000).toFixed(1);
-          const msg = `⚠️ Outside office (${distanceKm} km). Attendance blocked.`;
-          console.log(`GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)} | Distance: ${distance.toFixed(0)}m | Allowed: ${distance <= MAX_DISTANCE_METERS}`);
+          const msg = '⚠️ Outside office (' + distanceKm + ' km). Attendance blocked.';
           showStatus(msg, 'error');
           reject(msg);
         }
       },
       error => {
-        showStatus('GPS access denied - attendance blocked', 'error');
+        console.error('GPS CHECK ERROR:', error.name, error.message);
+        if (error.name === 'PermissionDeniedError' || error.code === 1) {
+          showStatus('GPS access denied. Please enable location services.', 'error');
+        } else if (error.name === 'PositionUnavailableError' || error.code === 2) {
+          showStatus('GPS position unavailable. Try moving to an open area.', 'error');
+        } else if (error.name === 'TimeoutError' || error.code === 3) {
+          showStatus('GPS request timed out. Please try again.', 'error');
+        } else {
+          showStatus('GPS error: ' + error.message, 'error');
+        }
         reject(error.message);
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   });
 }
@@ -647,6 +665,9 @@ async function scanFace() {
   isScanning = true;
   const scanBtn = document.getElementById('scanBtn');
   if (scanBtn) scanBtn.disabled = true;
+
+  // Reset location state for new verification
+  currentLocation = null;
 
   try {
     showStatus('Verifying...', 'info');

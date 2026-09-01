@@ -2544,6 +2544,9 @@
     }
 
     var firestoreDocId = currentDeleteEmployee.id;
+    var employeeUserId = currentDeleteEmployee.userId || currentDeleteEmployee.id;
+    var employeeName = currentDeleteEmployee.name || '--';
+
     if (!firestoreDocId || typeof firestoreDocId !== 'string' || firestoreDocId.trim() === '') {
       showStatus('Invalid employee record. Missing document ID.', 'error');
       return;
@@ -2552,6 +2555,7 @@
     var confirmBtn = document.getElementById('deleteConfirmBtn');
     var deleteSuccess = false;
     var errorMessage = '';
+    var attendanceDeletedCount = 0;
 
     try {
       if (confirmBtn) {
@@ -2559,16 +2563,36 @@
         confirmBtn.textContent = 'Deleting...';
       }
 
-      await Promise.race([
-        db.collection('users').doc(firestoreDocId).delete(),
-        createTimeoutPromise(DELETE_TIMEOUT_MS)
-      ]);
+      // Step 1: Find and delete all attendance records for this employee
+      var attendanceQuery = await db.collection('attendance')
+        .where('userId', '==', employeeUserId)
+        .get();
 
+      if (!attendanceQuery.empty) {
+        // Delete in batches to avoid Firestore batch limit (500)
+        var attendanceDocs = attendanceQuery.docs;
+        var batchSize = 450;
+        for (var i = 0; i < attendanceDocs.length; i += batchSize) {
+          var batch = db.batch();
+          var chunk = attendanceDocs.slice(i, i + batchSize);
+          chunk.forEach(function(doc) {
+            batch.delete(doc.ref);
+          });
+          await batch.commit();
+          attendanceDeletedCount += chunk.length;
+        }
+      }
+
+      // Step 2: Delete the employee document from users collection
+      await db.collection('users').doc(firestoreDocId).delete();
+
+      // Step 3: Invalidate cache
       if (typeof invalidateUsersCache === 'function') {
         invalidateUsersCache();
       }
 
       deleteSuccess = true;
+      console.log('Deleted employee: ' + employeeName + ' (' + employeeUserId + '), attendance records: ' + attendanceDeletedCount);
     } catch (e) {
       console.error('Delete employee failed:', e);
 
@@ -2590,7 +2614,7 @@
       closeDeleteConfirmation();
       closeEmployeeProfile();
       if (typeof showStatus === 'function') {
-        showStatus('Employee deleted successfully.', 'success');
+        showStatus('Employee deleted successfully. (' + attendanceDeletedCount + ' attendance records removed)', 'success');
       }
       state.currentProfileEmpId = null;
       currentDeleteEmployee = null;

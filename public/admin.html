@@ -535,21 +535,24 @@
                </div>
              </div>
            </div>
-           <!-- Delete Confirmation Overlay -->
-           <div id="deleteConfirmOverlay" class="delete-confirm-overlay hidden" hidden>
-             <div class="delete-confirm-content">
-               <h3 class="delete-confirm-title">Delete Employee?</h3>
-               <p class="delete-confirm-message">
-                 Are you sure you want to delete <span id="deleteConfirmName" class="delete-confirm-name"></span>?
-               </p>
-               <p class="delete-confirm-id">Employee ID: <span id="deleteConfirmId"></span></p>
-               <p class="delete-confirm-warning">This will permanently remove the employee's registration and biometric data.</p>
-               <div class="delete-confirm-actions">
-                 <button type="button" id="deleteConfirmCancel" class="btn btn-outline btn-sm">Cancel</button>
-                 <button type="button" id="deleteConfirmBtn" class="btn btn-danger btn-sm">Delete Employee</button>
-               </div>
-             </div>
-           </div>
+            <!-- Delete Confirmation Overlay -->
+            <div id="deleteConfirmOverlay" class="delete-confirm-overlay hidden" hidden>
+              <div class="delete-confirm-content">
+                <h3 class="delete-confirm-title">Delete Employee?</h3>
+                <p class="delete-confirm-message">
+                  Are you sure you want to delete <span id="deleteConfirmName" class="delete-confirm-name"></span>?
+                </p>
+                <p class="delete-confirm-id">Employee ID: <span id="deleteConfirmId"></span></p>
+                <p class="delete-confirm-warning">
+                  <strong>WARNING:</strong><br>
+                  This will permanently delete the employee's registration, biometric data, and <strong>ALL attendance records</strong> associated with this employee.
+                </p>
+                <div class="delete-confirm-actions">
+                  <button type="button" id="deleteConfirmCancel" class="btn btn-outline btn-sm">Cancel</button>
+                  <button type="button" id="deleteConfirmBtn" class="btn btn-danger btn-sm">Delete Employee</button>
+                </div>
+              </div>
+            </div>
 
          <!-- Register Employee Section -->
           <section id="section-register" class="admin-section hidden" hidden>
