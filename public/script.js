@@ -682,13 +682,6 @@ async function scanFace() {
       faceapi.draw.drawFaceLandmarks(canvas, resized);
     }
 
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCanvas.width = 200;
-    tempCanvas.height = 200;
-    tempCtx.drawImage(video, 0, 0, 200, 200);
-    const faceImageDataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
-
     const users = await getCachedUsers();
     let match = null, minDistance = Infinity;
 
@@ -753,7 +746,7 @@ async function scanFace() {
       dept: match.dept,
       appointment: match.appointment,
       location: currentLocation,
-      faceImage: faceImageDataUrl,
+      faceImage: match.faceImage || null,
       timestamp: firebase.firestore.FieldValue.serverTimestamp(),
       date: today,
       action: 'check-in'
@@ -790,6 +783,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     firebaseApp = firebase.initializeApp(window.firebaseConfig);
     auth = firebase.auth();
     db = firebase.firestore();
+
+    // Force HTTP/2 long polling to avoid QUIC protocol errors
+    try {
+      if (db.settings) {
+        db.settings({
+          experimentalForceLongPolling: true,
+          merge: true
+        });
+      }
+    } catch (e) {
+      console.warn('Could not apply Firestore long polling settings:', e);
+    }
 
     // Expose to global scope for admin dashboard and other modules
     window.firebaseApp = firebaseApp;
