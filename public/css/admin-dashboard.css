@@ -1590,6 +1590,18 @@ body {
   font-size: var(--font-size-sm);
 }
 
+.analytics-last-updated {
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-4);
+  text-align: right;
+}
+
+.analytics-last-updated-text {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
 @media (max-width: 768px) {
   .analytics-chart-card {
     padding: var(--space-4);
@@ -1723,7 +1735,7 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
   box-shadow: var(--shadow-xl);
-  max-width: 600px;
+  max-width: 800px;
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
@@ -1768,6 +1780,57 @@ body {
 
 .modal-body {
   padding: var(--space-6);
+}
+
+.profile-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.profile-photo-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.profile-photo-img {
+  width: 100%;
+  aspect-ratio: 1/1;
+  object-fit: cover;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary, #1B2416);
+  display: block;
+}
+
+.profile-photo-placeholder {
+  width: 100%;
+  aspect-ratio: 1/1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  background: var(--bg-primary, #1B2416);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.profile-photo-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-success);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .profile-grid {
@@ -1906,6 +1969,15 @@ body {
   .modal-content {
     width: 95%;
     max-height: 95vh;
+  }
+
+  .profile-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-photo-section {
+    max-width: 240px;
+    margin: 0 auto;
   }
 
   .profile-grid {

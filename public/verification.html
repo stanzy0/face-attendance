@@ -94,6 +94,29 @@
           </div>
         </div>
 
+        <!-- Registered Photo Card -->
+        <div class="info-card registered-photo-card" id="registeredPhotoCard" style="display:none;">
+          <div class="info-card-header">
+            <h3>Registered Photo</h3>
+            <span class="info-card-badge success" id="registeredPhotoBadge">Matched</span>
+          </div>
+          <div class="registered-photo-body" id="registeredPhotoBody">
+            <div class="registered-photo-container">
+              <img id="registeredPhotoImg" src="" alt="Registered Photo" class="registered-photo-img" onerror="this.style.display='none';document.getElementById('registeredPhotoPlaceholder').style.display='flex';">
+              <div class="registered-photo-placeholder" id="registeredPhotoPlaceholder" style="display:none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+                <span>REGISTERED PHOTO UNAVAILABLE</span>
+              </div>
+            </div>
+            <div class="registered-photo-status" id="registeredPhotoStatus">
+              <span class="status-dot registered"></span> FACE REGISTERED
+            </div>
+          </div>
+        </div>
+
         <!-- Location Status Card -->
         <div class="info-card location-card">
           <div class="info-card-header">

@@ -34,7 +34,7 @@
 </head>
 <body>
   <!-- Login Screen -->
-  <div id="adminLoginScreen" class="admin-login-page">
+   <div id="adminLoginScreen" class="admin-login-page hidden">
     <div class="admin-login-container">
       <!-- Left Panel: Login Form -->
       <div class="admin-login-left">
@@ -127,8 +127,26 @@
     </div>
   </div>
 
-  <!-- Admin Dashboard Shell (hidden until login) -->
-  <div id="adminDashboardScreen" class="admin-shell hidden">
+   <!-- Auth Loading Screen -->
+   <div id="adminAuthLoading" class="admin-auth-loading">
+     <div class="admin-auth-loading-content">
+       <div class="admin-login-brand">
+         <img src="assets/afcsc logo.png" alt="AFCSC" class="admin-login-brand-img" />
+         <span class="admin-login-brand-text">BioTrack</span>
+         <img src="assets/army logo.png" alt="Army" class="admin-login-brand-img" />
+       </div>
+       <div class="auth-loading-spinner">
+         <span class="auth-loading-dot"></span>
+         <span class="auth-loading-dot"></span>
+         <span class="auth-loading-dot"></span>
+       </div>
+       <div class="auth-loading-text">AUTHENTICATING</div>
+       <div class="auth-loading-subtext">Restoring secure session</div>
+     </div>
+   </div>
+
+   <!-- Admin Dashboard Shell (hidden until login) -->
+   <div id="adminDashboardScreen" class="admin-shell hidden">
     <!-- Sidebar -->
     <aside class="admin-sidebar" id="adminSidebar">
       <div class="admin-sidebar-brand">
@@ -268,6 +286,10 @@
             </div>
 
             <div id="analyticsKpiCards" class="analytics-kpi-grid"></div>
+
+            <div class="analytics-last-updated">
+              <span id="analyticsLastUpdated" class="analytics-last-updated-text"></span>
+            </div>
 
             <div class="analytics-charts-row">
               <div class="analytics-chart-card analytics-chart-large">
@@ -457,38 +479,53 @@
                 <button class="modal-close" data-close="employeeProfileModal" aria-label="Close">&times;</button>
               </div>
               <div class="modal-body" id="employeeProfileBody">
-                <div class="profile-grid">
-                  <div class="profile-group">
-                    <label class="profile-label">Employee ID</label>
-                    <span class="profile-value" id="profileEmployeeId"></span>
+                <div class="profile-layout">
+                  <div class="profile-photo-section">
+                    <img id="profilePhotoImg" src="" alt="Registered Photo" class="profile-photo-img" style="display:none;" onerror="this.style.display='none';document.getElementById('profilePhotoPlaceholder').style.display='flex';">
+                    <div class="profile-photo-placeholder" id="profilePhotoPlaceholder">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:48px;height:48px;opacity:0.5;">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                        <circle cx="12" cy="13" r="4"/>
+                      </svg>
+                      <span>NO REGISTERED PHOTO</span>
+                    </div>
+                    <div class="profile-photo-status" id="profilePhotoStatus">
+                      <span class="status-dot" style="background-color:var(--text-muted);width:6px;height:6px;border-radius:50%;flex-shrink:0;"></span> NO PHOTO
+                    </div>
                   </div>
-                  <div class="profile-group">
-                    <label class="profile-label">Full Name</label>
-                    <span class="profile-value" id="profileName"></span>
-                  </div>
-                  <div class="profile-group">
-                    <label class="profile-label">Department</label>
-                    <span class="profile-value" id="profileDept"></span>
-                  </div>
-                  <div class="profile-group">
-                    <label class="profile-label">Appointment</label>
-                    <span class="profile-value" id="profileAppointment"></span>
-                  </div>
-                  <div class="profile-group">
-                    <label class="profile-label">Phone</label>
-                    <span class="profile-value" id="profilePhone"></span>
-                  </div>
-                  <div class="profile-group">
-                    <label class="profile-label">Registered Date</label>
-                    <span class="profile-value" id="profileRegisteredAt"></span>
-                  </div>
-                  <div class="profile-group">
-                    <label class="profile-label">Face Registration</label>
-                    <span class="profile-value" id="profileFaceStatus"></span>
-                  </div>
-                  <div class="profile-group">
-                    <label class="profile-label">Registered Location</label>
-                    <span class="profile-value" id="profileLocation"></span>
+                  <div class="profile-grid">
+                    <div class="profile-group">
+                      <label class="profile-label">Employee ID</label>
+                      <span class="profile-value" id="profileEmployeeId"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Full Name</label>
+                      <span class="profile-value" id="profileName"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Department</label>
+                      <span class="profile-value" id="profileDept"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Appointment</label>
+                      <span class="profile-value" id="profileAppointment"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Phone</label>
+                      <span class="profile-value" id="profilePhone"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Registered Date</label>
+                      <span class="profile-value" id="profileRegisteredAt"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Face Registration</label>
+                      <span class="profile-value" id="profileFaceStatus"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Registered Location</label>
+                      <span class="profile-value" id="profileLocation"></span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -676,16 +713,28 @@
       'use strict';
       const loginScreen = document.getElementById('adminLoginScreen');
       const dashboardScreen = document.getElementById('adminDashboardScreen');
+      const loadingScreen = document.getElementById('adminAuthLoading');
+
+      window.__adminShowAuthLoading = function() {
+        if (loginScreen) loginScreen.classList.add('hidden');
+        if (dashboardScreen) dashboardScreen.classList.add('hidden');
+        if (loadingScreen) loadingScreen.classList.remove('hidden');
+      };
 
       window.__adminShowDashboard = function() {
+        if (loadingScreen) loadingScreen.classList.add('hidden');
         if (loginScreen) loginScreen.classList.add('hidden');
         if (dashboardScreen) dashboardScreen.classList.remove('hidden');
       };
 
       window.__adminShowLogin = function() {
+        if (loadingScreen) loadingScreen.classList.add('hidden');
         if (dashboardScreen) dashboardScreen.classList.add('hidden');
         if (loginScreen) loginScreen.classList.remove('hidden');
       };
+
+      // Show loading on initial page load to prevent login flash
+      window.__adminShowAuthLoading();
     })();
   </script>
 </body>

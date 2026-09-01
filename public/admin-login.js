@@ -162,24 +162,51 @@
     };
   }
 
-  // === Auth State Bridge ===
-  function setupAuthBridge() {
-    // Listen for auth state changes from script.js
-    const auth = window.auth;
-    if (!auth) return;
-
-    auth.onAuthStateChanged(function (user) {
-      if (user) {
-        // Successful login - show dashboard
-        if (window.__adminShowDashboard) {
-          window.__adminShowDashboard();
-        }
-      } else {
-        // Logout - show login screen
-        if (window.__adminShowLogin) {
-          window.__adminShowLogin();
-        }
+  // === Auth State Bridge (single source of truth for login/dashboard visibility) ===
+  function waitForAuth() {
+    return new Promise(function(resolve) {
+      if (window.auth) {
+        resolve(true);
+        return;
       }
+      var attempts = 0;
+      var maxAttempts = 100;
+      var interval = setInterval(function() {
+        attempts++;
+        if (window.auth) {
+          clearInterval(interval);
+          resolve(true);
+        } else if (attempts >= maxAttempts) {
+          clearInterval(interval);
+          resolve(false);
+        }
+      }, 100);
+    });
+  }
+
+  // === Auth State Handler ===
+  function setupAuthBridge() {
+    // Wait for Firebase auth to be ready before registering listener
+    waitForAuth().then(function(firebaseReady) {
+      if (!firebaseReady) {
+        console.error('Auth bridge: Firebase not ready');
+        return;
+      }
+
+      var auth = window.auth;
+      if (!auth) return;
+
+      auth.onAuthStateChanged(function (user) {
+        if (user) {
+          if (window.__adminShowDashboard) {
+            window.__adminShowDashboard();
+          }
+        } else {
+          if (window.__adminShowLogin) {
+            window.__adminShowLogin();
+          }
+        }
+      });
     });
   }
 

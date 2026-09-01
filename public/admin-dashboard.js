@@ -11,7 +11,10 @@
     customDateRange: null,
     attendanceData: [],
     usersData: [],
-    realtimeUnsubscribe: null,
+     realtimeUnsubscribe: null,
+    unsubscribeUsers: null,
+    unsubscribeAnalyticsAttendance: null,
+    analyticsAttendanceData: [],
     isLoading: false,
     initialized: false,
     dashboardEl: null
@@ -24,8 +27,137 @@
     return window.db || null;
   }
 
-  function getAuth() {
-    return window.auth || null;
+   function getAuth() {
+     return window.auth || null;
+   }
+
+  // ============================================
+  // REAL-TIME LISTENERS
+  // ============================================
+    function unsubscribeAllRealTime() {
+    if (state.unsubscribeUsers) {
+      state.unsubscribeUsers();
+      state.unsubscribeUsers = null;
+    }
+    if (state.unsubscribeAnalyticsAttendance) {
+      state.unsubscribeAnalyticsAttendance();
+      state.unsubscribeAnalyticsAttendance = null;
+    }
+    if (state.realtimeUnsubscribe) {
+      state.realtimeUnsubscribe();
+      state.realtimeUnsubscribe = null;
+    }
+    if (attendanceState && attendanceState.realtimeUnsubscribe) {
+      try {
+        attendanceState.realtimeUnsubscribe();
+      } catch (e) { /* ignore */ }
+      attendanceState.realtimeUnsubscribe = null;
+    }
+  }
+
+  function subscribeToUsersRealtime() {
+    if (state.unsubscribeUsers) {
+      state.unsubscribeUsers();
+    }
+    var db = getDb();
+    if (!db) return;
+
+    state.unsubscribeUsers = db.collection('users').onSnapshot(function(snapshot) {
+      var users = snapshot.docs.map(function(doc) {
+        return { id: doc.id, ...doc.data() };
+      });
+      state.usersData = users;
+
+      // Update dashboard if visible
+      if (isDashboardSectionVisible()) {
+        updateDashboard();
+      }
+
+      // Update employees section if visible
+      if (isEmployeesSectionVisible()) {
+        var countEl = document.getElementById('employeeCount');
+        if (countEl) {
+          countEl.innerHTML = '<span class="employee-count-badge">' + users.length + ' Personnel</span>';
+        }
+        populateEmployeeDeptFilter(users);
+        renderEmployeeTable(users);
+      }
+    }, function(error) {
+      console.error('Realtime users listener error:', error);
+    });
+  }
+
+  function isDashboardSectionVisible() {
+    var el = typeof document !== 'undefined' ? document.getElementById('section-dashboard') : null;
+    return !!(el && !el.classList.contains('hidden') && !el.hasAttribute('hidden'));
+  }
+
+   function isEmployeesSectionVisible() {
+     var el = typeof document !== 'undefined' ? document.getElementById('section-employees') : null;
+     return !!(el && !el.classList.contains('hidden') && !el.hasAttribute('hidden'));
+   }
+
+  function subscribeToAnalyticsAttendance(startDate, endDate) {
+    if (state.unsubscribeAnalyticsAttendance) {
+      state.unsubscribeAnalyticsAttendance();
+    }
+    var db = getDb();
+    if (!db) return;
+
+    // Query attendance for current analytics period
+    state.unsubscribeAnalyticsAttendance = db.collection('attendance')
+      .where('date', '>=', formatDate(startDate))
+      .where('date', '<=', formatDate(endDate))
+      .onSnapshot(function(snapshot) {
+        var records = snapshot.docs.map(function(doc) {
+          return { id: doc.id, ...doc.data() };
+        });
+        records.sort(function(a, b) {
+          return (b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : 0) - (a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : 0);
+        });
+        analyticsState.attendance = records;
+        state.analyticsAttendanceData = records;
+
+        // Update analytics if visible
+        if (isAnalyticsSectionVisible()) {
+          renderAnalytics();
+        }
+      }, function(error) {
+        console.error('Realtime analytics attendance listener error:', error);
+      });
+  }
+
+  function isAnalyticsSectionVisible() {
+    var el = typeof document !== 'undefined' ? document.getElementById('section-analytics') : null;
+    return !!(el && !el.classList.contains('hidden') && !el.hasAttribute('hidden'));
+  }
+
+  function subscribeToAttendanceForRangeRealtime(startDate, endDate) {
+    if (state.realtimeUnsubscribe) {
+      state.realtimeUnsubscribe();
+      state.realtimeUnsubscribe = null;
+    }
+    var db = getDb();
+    if (!db) return;
+
+    state.realtimeUnsubscribe = db.collection('attendance')
+      .where('date', '>=', formatDate(startDate))
+      .where('date', '<=', formatDate(endDate))
+      .onSnapshot(function(snapshot) {
+        var records = snapshot.docs.map(function(doc) {
+          return { id: doc.id, ...doc.data() };
+        });
+        records.sort(function(a, b) {
+          return (b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : 0) - (a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : 0);
+        });
+        state.attendanceData = records;
+
+        if (isDashboardSectionVisible()) {
+          updateDashboard();
+        }
+      }, function(error) {
+        console.error('Realtime attendance range listener error:', error);
+      });
   }
 
   function formatDate(date) {
@@ -890,8 +1022,10 @@
     if (trendContainer) trendContainer.innerHTML = renderSkeletonCharts();
     if (deptContainer) deptContainer.innerHTML = '<div class="skeleton" style="height:200px;"></div>';
 
-    try {
+     try {
+      // Initial one-time load for users, then set up real-time listener
       state.usersData = await loadUsers();
+      subscribeToUsersRealtime();
 
       if (state.currentPeriod === 'today') {
         state.attendanceData = await loadAttendanceForDate(state.currentDate);
@@ -899,6 +1033,7 @@
       } else {
         var range = getDateRange(state.currentPeriod, state.customDateRange);
         state.attendanceData = await loadAttendanceForRange(range.start, range.end);
+        subscribeToAttendanceForRangeRealtime(range.start, range.end);
       }
 
       populateDepartmentFilter(state.usersData);
@@ -1065,25 +1200,18 @@
         if (contentEl) contentEl.scrollTop = 0;
         window.scrollTo({ top: 0, behavior: 'instant' });
         loadDashboardData();
-      } else {
-        dashboard.classList.add('hidden');
-        if (section) { section.classList.add('hidden'); section.setAttribute('hidden', 'hidden'); }
-        unsubscribeFromAttendance();
-        unsubscribeFromAttendanceRecords();
-        state.attendanceData = [];
-        state.usersData = [];
-        attendanceState.records = [];
-        resetLoginForm();
-      }
+       } else {
+         dashboard.classList.add('hidden');
+         if (section) { section.classList.add('hidden'); section.setAttribute('hidden', 'hidden'); }
+         unsubscribeAllRealTime();
+         state.attendanceData = [];
+         state.usersData = [];
+         attendanceState.records = [];
+         resetLoginForm();
+       }
 
-      // Auth bridge for premium admin login screen
-      if (window.__adminShowDashboard && user) {
-        window.__adminShowDashboard();
-      } else if (window.__adminShowLogin && !user) {
-        window.__adminShowLogin();
-      }
     });
-  }
+   }
 
   // ============================================
   // NAVIGATION
@@ -2082,6 +2210,9 @@
       var users = await loadUsers();
       state.usersData = users;
 
+      // Set up real-time listener for users
+      subscribeToUsersRealtime();
+
       var countEl = document.getElementById('employeeCount');
       if (countEl) {
         countEl.innerHTML = '<span class="employee-count-badge">' + users.length + ' Personnel</span>';
@@ -2189,6 +2320,9 @@
     var profileReg = document.getElementById('profileRegisteredAt');
     var profileFace = document.getElementById('profileFaceStatus');
     var profileLoc = document.getElementById('profileLocation');
+    var profilePhotoImg = document.getElementById('profilePhotoImg');
+    var profilePhotoPlaceholder = document.getElementById('profilePhotoPlaceholder');
+    var profilePhotoStatus = document.getElementById('profilePhotoStatus');
 
     if (profileId) profileId.textContent = escapeHtml(user.userId || user.id || '--');
     if (profileName) profileName.textContent = escapeHtml(user.name || '--');
@@ -2221,6 +2355,23 @@
         profileLoc.textContent = locStr;
       } else {
         profileLoc.textContent = 'Location not available';
+      }
+    }
+
+    if (profilePhotoImg && profilePhotoPlaceholder && profilePhotoStatus) {
+      if (user.faceImage) {
+        profilePhotoImg.src = user.faceImage;
+        profilePhotoImg.style.display = 'block';
+        profilePhotoPlaceholder.style.display = 'none';
+        profilePhotoStatus.innerHTML = '<span class="status-dot" style="background-color:var(--color-success);box-shadow:0 0 4px rgba(46,139,87,0.5);width:6px;height:6px;border-radius:50%;flex-shrink:0;"></span> FACE REGISTERED';
+        profilePhotoStatus.style.color = 'var(--color-success)';
+      } else {
+        profilePhotoImg.style.display = 'none';
+        profilePhotoPlaceholder.style.display = 'flex';
+        var placeholderSpan = profilePhotoPlaceholder.querySelector('span');
+        if (placeholderSpan) placeholderSpan.textContent = 'NO REGISTERED PHOTO';
+        profilePhotoStatus.innerHTML = '<span class="status-dot" style="background-color:var(--text-muted);width:6px;height:6px;border-radius:50%;flex-shrink:0;"></span> NO PHOTO';
+        profilePhotoStatus.style.color = 'var(--text-muted)';
       }
     }
 
@@ -2477,11 +2628,16 @@
 
     try {
       analyticsState.users = await loadUsers();
+      subscribeToUsersRealtime();
       
       var range = getAnalyticsDateRange(analyticsState.period, analyticsState.customRange);
       var startDateStr = formatDate(range.start);
       var endDateStr = formatDate(range.end);
 
+      // Subscribe to real-time attendance updates for current analytics range
+      subscribeToAnalyticsAttendance(range.start, range.end);
+
+      // Initial one-time load for immediate rendering
       var snapshot = await db.collection('attendance')
         .where('date', '>=', startDateStr)
         .where('date', '<=', endDateStr)
@@ -2601,6 +2757,12 @@
     renderPeakAttendanceChart('analyticsPeakChart', filteredRecords);
     renderAnalyticsTrendComparison('analyticsTrendComparison', period, range);
     renderAnalyticsEmployeeInsights('analyticsEmployeeTable', filteredRecords, users);
+
+    // Update last updated timestamp
+    var lastUpdatedEl = document.getElementById('analyticsLastUpdated');
+    if (lastUpdatedEl) {
+      lastUpdatedEl.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
   }
 
   function filterAnalyticsRecords(records, filters) {

@@ -465,6 +465,98 @@
   }
 }
 
+/* === Auth Loading Screen === */
+.admin-auth-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background-color: var(--bg-primary, #1B2416);
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.admin-auth-loading::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(75, 83, 32, 0.2), transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(85, 107, 47, 0.12), transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(200, 166, 70, 0.04), transparent 60%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.admin-auth-loading::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(245, 245, 228, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 245, 228, 0.02) 1px, transparent 1px);
+  background-size: 60px 60px;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.admin-auth-loading-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+  text-align: center;
+}
+
+.auth-loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.auth-loading-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--color-accent, #C8A646);
+  box-shadow: 0 0 8px rgba(200, 166, 70, 0.5);
+  animation: auth-loading-pulse 1.2s ease-in-out infinite both;
+}
+
+.auth-loading-dot:nth-child(1) { animation-delay: -0.32s; }
+.auth-loading-dot:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes auth-loading-pulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.auth-loading-text {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent, #C8A646);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.auth-loading-subtext {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+
 /* === Accessibility === */
 @media (prefers-reduced-motion: reduce) {
   *,

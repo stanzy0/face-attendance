@@ -494,7 +494,7 @@ async function registerFace() {
     return showStatus('Start Camera first, then Register', 'error');
   }
   
-  try {
+   try {
     await verifyOfficeLocation();
     showStatus('Scanning face...', 'info');
     
@@ -505,10 +505,18 @@ async function registerFace() {
     if (existing.exists) {
       return showStatus('Employee ID already registered. Choose a different ID or contact an administrator.', 'error');
     }
+
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCanvas.width = 200;
+    tempCanvas.height = 200;
+    tempCtx.drawImage(video, 0, 0, 200, 200);
+    const faceImageDataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
     
      await db.collection('users').doc(formData.userId).set({
        ...formData,
        faceDescriptor: Array.from(detections[0].descriptor),
+       faceImage: faceImageDataUrl,
        registeredLocation: currentLocation,
        registeredAt: firebase.firestore.FieldValue.serverTimestamp()
      });
@@ -598,29 +606,28 @@ async function scanFace() {
   try {
     showStatus('Verifying...', 'info');
 
-    let detection;
-    try {
-      const [, detectionResult] = await Promise.all([
-        verifyOfficeLocation(),
-        (async () => {
-          showStatus('Looking for face...', 'info');
-          return await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-            .withFaceLandmarks()
-            .withFaceDescriptor();
-        })()
-      ]);
-      detection = detectionResult;
-    } catch (e) {
-      // GPS failure or face detection failure
-      throw e;
-    }
+    let gpsOk = false;
+    let detection = null;
+
+    const gpsPromise = verifyOfficeLocation()
+      .then(() => { gpsOk = true; })
+      .catch(err => { console.log('GPS check failed during scan:', err); });
+
+    const facePromise = (async () => {
+      showStatus('Looking for face...', 'info');
+      return await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+    })();
+
+    const [, detectionResult] = await Promise.all([gpsPromise, facePromise]);
+    detection = detectionResult;
 
     if (!detection) {
       showStatus('No face detected - try closer/better light', 'error');
       return;
     }
 
-    // Draw detection overlay
     const displaySize = { width: video.videoWidth, height: video.videoHeight };
     if (canvas) {
       const ctx = canvas.getContext('2d');
@@ -630,7 +637,6 @@ async function scanFace() {
       faceapi.draw.drawFaceLandmarks(canvas, resized);
     }
 
-    // CAPTURE FACE IMAGE
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
     tempCanvas.width = 200;
@@ -638,7 +644,6 @@ async function scanFace() {
     tempCtx.drawImage(video, 0, 0, 200, 200);
     const faceImageDataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
 
-    // Match users using cached data to avoid repeated Firestore reads
     const users = await getCachedUsers();
     let match = null, minDistance = Infinity;
 
@@ -649,46 +654,67 @@ async function scanFace() {
           new Float32Array(user.faceDescriptor)
         );
         if (distance < 0.6 && distance < minDistance) {
-          match = { id: user.id, name: user.name, dept: user.dept, appointment: user.appointment };
+          match = { 
+            id: user.id, 
+            name: user.name, 
+            dept: user.dept, 
+            appointment: user.appointment,
+            faceImage: user.faceImage || null
+          };
           minDistance = distance;
         }
       }
     });
 
-    if (match) {
-      // CHECK FOR TODAY'S RECORD - ONE SCAN PER DAY
-      const today = new Date().toISOString().split('T')[0];
-      const existing = await db.collection('attendance')
-        .where('userId', '==', match.id)
-        .where('date', '==', today)
-        .limit(1)
-        .get();
+    const confidence = match ? Math.max(0, Math.min(100, Math.round((1 - minDistance) * 100))) : 0;
+    window.lastMatchDetails = match ? {
+      ...match,
+      confidence: confidence,
+      distance: minDistance,
+      location: currentLocation,
+      timestamp: new Date()
+    } : null;
 
-      if (!existing.empty) {
-        const existingDoc = existing.docs[0];
-        const existingTime = existingDoc.data().timestamp.toDate().toLocaleTimeString();
-        showStatus(`⚠️ ${match.name} already scanned at ${existingTime}`, 'warning');
-        return;
-      }
-
-      showStatus(`✅ ${match.name} (${match.appointment}) logged in! Distance: ${minDistance.toFixed(2)}`, 'success');
-
-      await db.collection('attendance').add({
-        userId: match.id,
-        name: match.name,
-        dept: match.dept,
-        appointment: match.appointment,
-        location: currentLocation,
-        faceImage: faceImageDataUrl,
-        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-        date: today,
-        action: 'check-in'
-      });
-
-      if (isAdminSignedIn) loadAttendanceRecords();
-    } else {
+    if (!match) {
       showStatus('No match (distance > 0.6). Register first.', 'error');
+      return;
     }
+
+    const today = new Date().toISOString().split('T')[0];
+    const existing = await db.collection('attendance')
+      .where('userId', '==', match.id)
+      .where('date', '==', today)
+      .limit(1)
+      .get();
+
+    if (!existing.empty) {
+      const existingDoc = existing.docs[0];
+      const existingTime = existingDoc.data().timestamp.toDate().toLocaleTimeString();
+      showStatus(`⚠️ ${match.name} already scanned at ${existingTime}`, 'warning');
+      return;
+    }
+
+    if (!gpsOk) {
+      const dist = currentLocation ? (currentLocation.distance / 1000).toFixed(1) + ' km' : 'unknown distance';
+      showStatus(`⚠️ ${match.name} (${match.appointment}) - Outside office (${dist}). Attendance blocked.`, 'warning');
+      return;
+    }
+
+    showStatus(`✅ ${match.name} (${match.appointment}) logged in! Confidence: ${confidence}%`, 'success');
+
+    await db.collection('attendance').add({
+      userId: match.id,
+      name: match.name,
+      dept: match.dept,
+      appointment: match.appointment,
+      location: currentLocation,
+      faceImage: faceImageDataUrl,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+      date: today,
+      action: 'check-in'
+    });
+
+    if (isAdminSignedIn) loadAttendanceRecords();
   } catch (e) {
     const message = (e && e.message) ? e.message : (typeof e === 'string' ? e : 'An unexpected error occurred');
     showStatus('Error: ' + message, 'error');
@@ -750,16 +776,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (panel) panel.style.display = 'none';
       if (regBtn) regBtn.disabled = true;
       if (adminStatus) adminStatus.textContent = 'Not signed in';
-    }
+     }
 
-    // Auth bridge for premium admin login screen
-    if (window.__adminShowDashboard && user) {
-      window.__adminShowDashboard();
-    } else if (window.__adminShowLogin && !user) {
-      window.__adminShowLogin();
-    }
-  });
-  }
+    });
+   }
   
   // Face-api models
   if (faceapi?.nets) {
