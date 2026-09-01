@@ -1,8 +1,3 @@
-/* ============================================
-   BioTrack Verification Experience
-   Phase 3 — UI State Layer
-   ============================================ */
-
 (function () {
   'use strict';
 
@@ -30,6 +25,73 @@
   const lastVerificationConfidence = document.getElementById('lastVerificationConfidence');
   const lastVerificationTime = document.getElementById('lastVerificationTime');
 
+  // === Authoritative Location State ===
+  // Single source of truth for location verification status
+  let locationVerificationState = 'checking';
+  let lastLocationDistance = null;
+
+  function setLocationState(state, distance) {
+    locationVerificationState = state;
+    if (distance != null) {
+      lastLocationDistance = distance;
+    }
+    renderLocationUI();
+  }
+
+  function getLocationState() {
+    return locationVerificationState;
+  }
+
+  function renderLocationUI() {
+    if (!locationBadge) return;
+
+    if (locationVerificationState === 'verified') {
+      setBadge(locationBadge, 'success', 'Verified');
+      if (locationDistance) {
+        locationDistance.textContent = lastLocationDistance != null ? (lastLocationDistance / 1000).toFixed(3) + ' km' : '--';
+      }
+      if (locationState) {
+        locationState.textContent = 'Inside office premises';
+        locationState.className = 'location-detail-value inside';
+      }
+      if (locationAttendance) {
+        locationAttendance.textContent = 'Verified';
+        locationAttendance.className = 'location-detail-value inside';
+      }
+      if (locationDetails) {
+        locationDetails.classList.add('visible');
+      }
+    } else if (locationVerificationState === 'blocked') {
+      setBadge(locationBadge, 'error', 'Blocked');
+      if (locationDistance) {
+        locationDistance.textContent = lastLocationDistance != null ? (lastLocationDistance / 1000).toFixed(3) + ' km' : '--';
+      }
+      if (locationState) {
+        locationState.textContent = 'Outside office premises';
+        locationState.className = 'location-detail-value outside';
+      }
+      if (locationAttendance) {
+        locationAttendance.textContent = 'Blocked';
+        locationAttendance.className = 'location-detail-value blocked';
+      }
+      if (locationDetails) {
+        locationDetails.classList.add('visible');
+      }
+    } else {
+      // checking or error
+      setBadge(locationBadge, 'checking', 'Checking');
+      if (locationDetails) {
+        locationDetails.classList.remove('visible');
+      }
+      if (locationState) {
+        locationState.textContent = 'Checking...';
+      }
+      if (locationAttendance) {
+        locationAttendance.textContent = 'Pending';
+      }
+    }
+  }
+
   // === Helpers ===
   function setSystemStatus(state, text) {
     if (!systemStatus || !systemStatusText) return;
@@ -47,57 +109,6 @@
     if (!el) return;
     el.className = 'status-chip';
     if (type) el.classList.add(type);
-  }
-
-  function parseStatus(text) {
-    if (!text) return { type: 'info', message: '' };
-
-    const t = text.toLowerCase();
-
-    // Actual system/app errors first
-    const actualError =
-      t.includes('error:') ||
-      t.includes('denied') ||
-      (t.includes('failed') && !t.includes('already scanned')) ||
-      t.includes('models failed') ||
-      t.includes('camera permission denied') ||
-      t.includes('camera/face-api not ready') ||
-      t.includes('wait for camera preview') ||
-      t.includes('load failed') ||
-      t.includes('export failed') ||
-      t.includes('no admin account found') ||
-      t.includes('wrong-password') ||
-      t.includes('invalid-email') ||
-      t.includes('login failed') ||
-      t.includes('unable to sign in') ||
-      t.includes('geolocation unavailable') ||
-      t.includes('gps access denied') ||
-      t.includes('no match');
-
-    if (actualError) {
-      return { type: 'error', message: text };
-    }
-
-    // Location/office boundary issues are operational warnings, not system errors
-    const locationWarning =
-      t.includes('outside office') ||
-      t.includes('outside') ||
-      t.includes('blocked') ||
-      t.includes('500m');
-
-    if (locationWarning) {
-      return { type: 'location', message: text };
-    }
-
-    if (t.includes('success') || t.includes('verified') || t.includes('ready') || t.includes('logged in') || t.includes('recorded')) {
-      return { type: 'success', message: text };
-    }
-
-    if (t.includes('warning') || t.includes('already scanned')) {
-      return { type: 'warning', message: text };
-    }
-
-    return { type: 'info', message: text };
   }
 
   function safeText(value) {
@@ -170,7 +181,7 @@
       try {
         originalShowStatus(safeMsg || '', type);
       } catch (e) {
-        // Do not break the UI if original showStatus throws
+        // Do not break the UI if originalShowStatus throws
       }
     }
 
@@ -183,27 +194,24 @@
       displayMsg = 'An unexpected error occurred. Please try again.';
     }
 
-    const parsed = parseStatus(displayMsg);
-
-    setStatusClass(statusEl, parsed.type === 'location' ? 'warning' : parsed.type);
-
-    if (parsed.type === 'success') {
-      setSystemStatus('success', 'System Ready');
-    } else if (parsed.type === 'error') {
-      setSystemStatus('error', 'System Error');
-    } else if (parsed.type === 'location') {
-      setSystemStatus('ready', 'Location Checked');
-    } else if (parsed.type === 'warning') {
-      setSystemStatus('checking', 'Processing');
-    } else if (safeMsg.includes('Looking for face') || safeMsg.includes('Scanning')) {
+    // Update system status based on message type
+    const t = displayMsg.toLowerCase();
+    if (t.includes('office ok') || t.includes('verified')) {
+      setSystemStatus('success', 'Location Verified');
+    } else if (t.includes('outside office') || t.includes('blocked')) {
+      setSystemStatus('warning', 'Location Blocked');
+    } else if (t.includes('looking for face') || t.includes('scanning')) {
       setSystemStatus('checking', 'Scanning');
-    } else if (safeMsg.includes('Camera ready') || safeMsg.includes('Ready')) {
+    } else if (t.includes('camera ready') || t.includes('ready')) {
       setSystemStatus('ready', 'System Ready');
-    } else {
-      setSystemStatus('ready', 'System Ready');
+    } else if (t.includes('logged in')) {
+      setSystemStatus('success', 'Verified');
+    } else if (t.includes('no match') || t.includes('error')) {
+      setSystemStatus('error', 'Verification Failed');
     }
 
-    if (parsed.type === 'success' && safeMsg.includes('logged in')) {
+    // Handle successful verification result
+    if (safeMsg.includes('logged in')) {
       setBadge(verifyBadge, 'success', 'Verified');
       const match = safeMsg.match(/✅\s(.+?)\s\((.+?)\)\slogged\sin!/);
       const matchData = window.lastMatchDetails;
@@ -216,9 +224,10 @@
         const confidence = matchData ? matchData.confidence : '--';
         const empId = matchData ? matchData.id : '--';
         const dept = matchData ? matchData.dept : '--';
-        const locDist = matchData && matchData.location && matchData.location.distance != null ? matchData.location.distance : null;
-        const locStatus = locDist !== null ? (locDist <= 500 ? 'Inside office premises' : 'Outside office premises') : '--';
-        const attendance = locDist !== null ? (locDist <= 500 ? 'Verified' : 'Blocked') : '--';
+        const locDist = lastLocationDistance;
+        const isInside = locationVerificationState === 'verified';
+        const locStatus = isInside ? 'Inside office premises' : 'Outside office premises';
+        const attendance = isInside ? 'Verified' : 'Blocked';
 
         verificationDetails.innerHTML = `
           <div class="verification-detail">
@@ -243,7 +252,7 @@
           </div>
           <div class="verification-detail">
             <span class="verification-detail-label">Location</span>
-            <span class="verification-detail-value ${locDist !== null && locDist <= 500 ? 'inside' : 'outside'}">${escapeHtml(locStatus)}</span>
+            <span class="verification-detail-value ${isInside ? 'inside' : 'outside'}">${escapeHtml(locStatus)}</span>
           </div>
           <div class="verification-detail">
             <span class="verification-detail-label">Attendance</span>
@@ -253,7 +262,7 @@
         verificationResult.classList.add('visible');
         if (matchData) updateRegisteredPhotoCard(matchData);
       }
-    } else if (parsed.type === 'error' && safeMsg.includes('No match')) {
+    } else if (safeMsg.includes('No match')) {
       setBadge(verifyBadge, 'error', 'Failed');
       verificationResultTitle.textContent = 'IDENTITY NOT VERIFIED';
       verificationResultIcon.innerHTML = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
@@ -271,7 +280,7 @@
       `;
       verificationResult.classList.add('visible');
       updateRegisteredPhotoCard(null);
-    } else if (parsed.type === 'warning' && safeMsg.includes('already scanned')) {
+    } else if (safeMsg.includes('already scanned')) {
       setBadge(verifyBadge, 'warning', 'Duplicate');
       const match = safeMsg.match(/⚠️\s(.+?)\salready\sscanned/);
       const matchData = window.lastMatchDetails;
@@ -299,41 +308,6 @@
         <div class="verification-detail">
           <span class="verification-detail-label">Status</span>
           <span class="verification-detail-value" style="color: var(--color-warning)">Already recorded</span>
-        </div>
-      `;
-      verificationResult.classList.add('visible');
-      if (matchData) updateRegisteredPhotoCard(matchData);
-    } else if (parsed.type === 'location') {
-      setBadge(verifyBadge, 'warning', 'Location Blocked');
-      const matchData = window.lastMatchDetails;
-      const empId = matchData ? matchData.id : '--';
-      const name = matchData ? matchData.name : '--';
-      const dept = matchData ? matchData.dept : '--';
-      verificationResultTitle.textContent = 'Attendance Blocked';
-      verificationResultIcon.innerHTML = '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>';
-      verificationResultIcon.classList.remove('success', 'error');
-      verificationResultIcon.style.color = 'var(--color-warning)';
-
-      verificationDetails.innerHTML = `
-        <div class="verification-detail">
-          <span class="verification-detail-label">Name</span>
-          <span class="verification-detail-value">${escapeHtml(name)}</span>
-        </div>
-        <div class="verification-detail">
-          <span class="verification-detail-label">Employee ID</span>
-          <span class="verification-detail-value">${escapeHtml(empId)}</span>
-        </div>
-        <div class="verification-detail">
-          <span class="verification-detail-label">Department</span>
-          <span class="verification-detail-value">${escapeHtml(dept)}</span>
-        </div>
-        <div class="verification-detail">
-          <span class="verification-detail-label">Status</span>
-          <span class="verification-detail-value" style="color: var(--color-warning)">Outside office premises</span>
-        </div>
-        <div class="verification-detail">
-          <span class="verification-detail-label">Action</span>
-          <span class="verification-detail-value">Move within approved area</span>
         </div>
       `;
       verificationResult.classList.add('visible');
@@ -366,41 +340,30 @@
     }
   }
 
-  // === Location Tracking ===
-  function resetLocationUI() {
-    if (!locationBadge) return;
-    setBadge(locationBadge, 'checking', 'Checking');
-    if (locationDetails) locationDetails.classList.remove('visible');
-    if (locationState) locationState.textContent = 'Checking...';
-    if (locationAttendance) locationAttendance.textContent = 'Pending';
-  }
+  // === Initialize ===
+  function init() {
+    // Track camera and scanning state via polling
+    setInterval(() => {
+      const video = document.getElementById('video');
+      if (!video) return;
 
-  function updateLocationUI() {
-    // Access currentLocation from the global scope declared in script.js
-    let loc;
-    try {
-      loc = typeof currentLocation !== 'undefined' ? currentLocation : window.currentLocation;
-    } catch (e) {
-      loc = null;
-    }
+      // Camera state
+      if (video.srcObject) {
+        cameraContainer.classList.add('active');
+      } else {
+        cameraContainer.classList.remove('active');
+      }
 
-    if (!loc) {
-      setBadge(locationBadge, 'checking', 'Checking');
-      locationDetails.classList.remove('visible');
-      return;
-    }
+      // Scanning state
+      if (statusEl) {
+        const text = statusEl.textContent || '';
+        const isScanning = text.includes('Looking for face') || text.includes('Scanning');
+        updateScanningState(isScanning);
+      }
+    }, 200);
 
-    const inside = loc.distance <= 500;
-    const distanceKm = (loc.distance / 1000).toFixed(3);
-    const distanceFormatted = distanceKm + ' km';
-
-    setBadge(locationBadge, inside ? 'success' : 'error', inside ? 'Inside' : 'Outside');
-    locationDistance.textContent = distanceFormatted;
-    locationState.textContent = inside ? 'Inside office premises' : 'Outside office premises';
-    locationState.className = 'location-detail-value ' + (inside ? 'inside' : 'outside');
-    locationAttendance.textContent = inside ? 'Verified' : 'Blocked';
-    locationAttendance.className = 'location-detail-value ' + (inside ? 'inside' : 'blocked');
-    locationDetails.classList.add('visible');
+    // Load last verification
+    loadLastVerification();
   }
 
   // === Last Verification (read-only Firestore query) ===
@@ -439,42 +402,14 @@
     }
   }
 
-  // === Initialize ===
-  function init() {
-    // Track camera and scanning state via polling
-    setInterval(() => {
-      const video = document.getElementById('video');
-      if (!video) return;
-
-      // Camera state
-      if (video.srcObject) {
-        cameraContainer.classList.add('active');
-      } else {
-        cameraContainer.classList.remove('active');
-      }
-
-      // Scanning state
-      if (statusEl) {
-        const text = statusEl.textContent || '';
-        const isScanning = text.includes('Looking for face') || text.includes('Scanning');
-        updateScanningState(isScanning);
-      }
-    }, 200);
-
-    // Track location state
-    const locationInterval = setInterval(() => {
-      updateLocationUI();
-    }, 1000);
-    updateLocationUI();
-
-    // Load last verification
-    loadLastVerification();
-  }
-
   // Run after DOM is ready and script.js has executed
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
   }
+
+  // === Expose location state functions for script.js ===
+  window.setLocationState = setLocationState;
+  window.getLocationState = getLocationState;
 })();

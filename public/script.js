@@ -42,6 +42,7 @@ async function verifyOfficeLocation() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       console.error('GPS CHECK: Geolocation API not available');
+      if (window.setLocationState) window.setLocationState('checking', null);
       return reject('Geolocation unavailable');
     }
 
@@ -61,9 +62,11 @@ async function verifyOfficeLocation() {
         console.log('  Result: ' + (distance <= MAX_DISTANCE_METERS ? 'ALLOWED' : 'BLOCKED'));
 
         if (distance <= MAX_DISTANCE_METERS) {
+          if (window.setLocationState) window.setLocationState('verified', distance);
           showStatus('✅ Office OK (' + distance.toFixed(0) + 'm)', 'success');
           resolve(currentLocation);
         } else {
+          if (window.setLocationState) window.setLocationState('blocked', distance);
           const distanceKm = (distance / 1000).toFixed(1);
           const msg = '⚠️ Outside office (' + distanceKm + ' km). Attendance blocked.';
           showStatus(msg, 'error');
@@ -72,6 +75,7 @@ async function verifyOfficeLocation() {
       },
       error => {
         console.error('GPS CHECK ERROR:', error.name, error.message);
+        if (window.setLocationState) window.setLocationState('checking', null);
         if (error.name === 'PermissionDeniedError' || error.code === 1) {
           showStatus('GPS access denied. Please enable location services.', 'error');
         } else if (error.name === 'PositionUnavailableError' || error.code === 2) {
@@ -668,6 +672,7 @@ async function scanFace() {
 
   // Reset location state for new verification
   currentLocation = null;
+  if (window.setLocationState) window.setLocationState('checking', null);
 
   try {
     showStatus('Verifying...', 'info');
