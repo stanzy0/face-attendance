@@ -119,6 +119,8 @@ async function adminSignIn() {
     else if (e.code === 'auth/invalid-email') errorMsg = 'Invalid email format';
     else errorMsg = e.message;
     showStatus(errorMsg, 'error');
+  } finally {
+    if (window.resetAdminLoginButton) window.resetAdminLoginButton();
   }
 }
 
@@ -126,6 +128,8 @@ async function adminSignOut() {
   try {
     showStatus('Signing out...', 'info');
     await auth.signOut();
+    showStatus('Signed out successfully', 'success');
+    if (window.resetAdminLoginButton) window.resetAdminLoginButton();
   } catch (e) {
     showStatus('Logout failed', 'error');
   }
@@ -852,6 +856,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (panel) panel.style.display = 'none';
       if (regBtn) regBtn.disabled = true;
       if (adminStatus) adminStatus.textContent = 'Not signed in';
+      if (window.resetAdminLoginButton) window.resetAdminLoginButton();
      }
 
     });

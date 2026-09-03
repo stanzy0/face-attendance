@@ -94,6 +94,16 @@
     }
   }
 
+  function resetAdminLoginButton() {
+    if (!adminSignInBtn) return;
+    adminSignInBtn.removeAttribute('data-original-text');
+    adminSignInBtn.textContent = 'Sign In';
+    adminSignInBtn.removeAttribute('aria-busy');
+    adminSignInBtn.disabled = false;
+  }
+
+  window.resetAdminLoginButton = resetAdminLoginButton;
+
   // === Error Handling ===
   function showFieldError(fieldId, message) {
     const field = document.getElementById(fieldId);
