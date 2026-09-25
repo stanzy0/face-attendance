@@ -1,8 +1,94 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+    // Super Admin: full access
+    match /users/{userId} {
+      allow read: if isSuperAdmin() || isOwner(userId) || isDivisionAdminMatchingUser(userId);
+      allow create: if isSuperAdmin() || (!isDivisionAdmin() && isValidUserData(request.resource.data)) || (isDivisionAdmin() && isUserInSameDivisionAdminScope(request.resource.data) && isValidUserData(request.resource.data));
+      allow update: if isSuperAdmin() || (isOwner(userId) && isLimitedUserUpdate(request.resource.data) && (!isDivisionAdmin() || (request.resource.data.dept == resource.data.dept && request.resource.data.course == resource.data.course && request.resource.data.division == resource.data.division)));
+      allow delete: if isSuperAdmin();
     }
+
+    match /attendance/{attendanceId} {
+      allow read: if isSuperAdmin() || isDivisionAdminMatchingAttendance(resource.data);
+      allow create: if isSuperAdmin() || isDivisionAdminMatchingAttendance(request.resource.data);
+      allow update: if isSuperAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    match /{document=**} {
+      allow read: if isSuperAdmin();
+      allow write: if isSuperAdmin();
+    }
+  }
+
+  function isSuperAdmin() {
+    return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superAdmin';
+  }
+
+  function isDivisionAdmin() {
+    return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'divisionAdmin';
+  }
+
+  function isOwner(userId) {
+    return request.auth != null && request.auth.uid == userId;
+  }
+
+  function isDivisionAdminMatchingAttendance(data) {
+    return request.auth != null &&
+      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'divisionAdmin' &&
+      data.dept == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.dept &&
+      data.course == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.course &&
+      data.division == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.division;
+  }
+
+  function isDivisionAdminMatchingUser(userId) {
+    return request.auth != null &&
+      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'divisionAdmin' &&
+      get(/databases/$(database)/documents/users/$(userId)).data.dept == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.dept &&
+      get(/databases/$(database)/documents/users/$(userId)).data.course == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.course &&
+      get(/databases/$(database)/documents/users/$(userId)).data.division == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.division;
+  }
+
+  function isValidUserData(data) {
+    return data.keys().hasAll(['userId', 'name', 'dept']) &&
+      data.userId is string && data.userId.size() > 0 &&
+      data.name is string && data.name.size() > 0 &&
+      data.dept is string && data.dept.size() > 0 &&
+      (!data.course || isValidCourseData(data));
+  }
+
+  function isValidCourseData(data) {
+    return data.course is string && data.course.size() > 0 &&
+      data.term is string && data.term.size() > 0 &&
+      data.division is string && data.division.size() > 0 &&
+      data.syndicate is string && data.syndicate.size() > 0 &&
+      isValidCourse(data.course, data.term, data.division, data.syndicate);
+  }
+
+  function isValidCourse(course, term, division, syndicate) {
+    if (course == 'Senior Course') {
+      return term in ['Term 1', 'Term 2', 'Term 3', 'Term 4', 'Term 5'] &&
+        division in ['Alpha Div', 'Bravo Div', 'Charlie Div', 'Delta Div'] &&
+        syndicate in ['Syndicate 1', 'Syndicate 2', 'Syndicate 3', 'Syndicate 4', 'Syndicate 5', 'Syndicate 6', 'Syndicate 7', 'Syndicate 8'];
+    }
+    if (course == 'Junior Course') {
+      return term in ['Term 1', 'Term 2'] &&
+        division in ['Alpha Div', 'Bravo Div', 'Charlie Div'] &&
+        syndicate in ['Syndicate 1', 'Syndicate 2', 'Syndicate 3', 'Syndicate 4', 'Syndicate 5', 'Syndicate 6'];
+    }
+    return false;
+  }
+
+  function isLimitedUserUpdate(data) {
+    return data.keys().hasOnly(['userId', 'name', 'dept', 'appointment', 'phone', 'rank', 'course', 'term', 'division', 'syndicate', 'status', 'faceDescriptor', 'faceImage', 'registeredLocation', 'registeredAt']);
+  }
+
+  function isUserInSameDivisionAdminScope(data) {
+    return request.auth != null &&
+      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'divisionAdmin' &&
+      data.dept == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.dept &&
+      data.course == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.course &&
+      data.division == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.division;
   }
 }

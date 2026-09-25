@@ -32,9 +32,13 @@
      return window.auth || null;
    }
 
-  // ============================================
-  // REAL-TIME LISTENERS
-  // ============================================
+   function getUserName(data) {
+     return data?.["name "] ?? data?.name ?? null;
+   }
+
+   // ============================================
+   // REAL-TIME LISTENERS
+   // ============================================
     function unsubscribeAllRealTime() {
     if (state.unsubscribeUsers) {
       state.unsubscribeUsers();
@@ -56,36 +60,53 @@
     }
   }
 
-  function subscribeToUsersRealtime() {
+  async function subscribeToUsersRealtime() {
     if (state.unsubscribeUsers) {
       state.unsubscribeUsers();
     }
     var db = getDb();
     if (!db) return;
 
-    state.unsubscribeUsers = db.collection('users').onSnapshot(function(snapshot) {
-      var users = snapshot.docs.map(function(doc) {
-        return { id: doc.id, ...doc.data() };
-      });
-      state.usersData = users;
-
-      // Update dashboard if visible
-      if (isDashboardSectionVisible()) {
-        updateDashboard();
+    try {
+      var role = await window.getCurrentUserRole?.();
+      var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
+      var query = db.collection('users');
+      if (scope) {
+        query = query.where('dept', '==', scope.department)
+                     .where('course', '==', scope.course)
+                     .where('division', '==', scope.division);
       }
 
-      // Update employees section if visible
-      if (isEmployeesSectionVisible()) {
-        var countEl = document.getElementById('employeeCount');
-        if (countEl) {
-          countEl.innerHTML = '<span class="employee-count-badge">' + users.length + ' Personnel</span>';
+      state.unsubscribeUsers = query.onSnapshot(function(snapshot) {
+        var users = snapshot.docs.map(function(doc) {
+          return { id: doc.id, ...doc.data() };
+        });
+        var studentUsers = users.filter(function(u) {
+          var userRole = u["role "] ?? u.role ?? null;
+          return userRole !== 'superAdmin' && userRole !== 'divisionAdmin';
+        });
+        state.usersData = studentUsers;
+
+        // Update dashboard if visible
+        if (isDashboardSectionVisible()) {
+          updateDashboard();
         }
-        populateEmployeeDeptFilter(users);
-        renderEmployeeTable(users);
-      }
-    }, function(error) {
-      console.error('Realtime users listener error:', error);
-    });
+
+        // Update employees section if visible
+        if (isEmployeesSectionVisible()) {
+          var countEl = document.getElementById('employeeCount');
+          if (countEl) {
+            countEl.innerHTML = '<span class="employee-count-badge">' + studentUsers.length + ' Students</span>';
+          }
+          populateEmployeeDeptFilter(studentUsers);
+          renderEmployeeTable(studentUsers);
+        }
+      }, function(error) {
+        console.error('Realtime users listener error:', error);
+      });
+    } catch (e) {
+      console.error('Failed to subscribe to users realtime', e);
+    }
   }
 
   function isDashboardSectionVisible() {
@@ -133,7 +154,7 @@
     return !!(el && !el.classList.contains('hidden') && !el.hasAttribute('hidden'));
   }
 
-  function subscribeToAttendanceForRangeRealtime(startDate, endDate) {
+  async function subscribeToAttendanceForRangeRealtime(startDate, endDate) {
     if (state.realtimeUnsubscribe) {
       state.realtimeUnsubscribe();
       state.realtimeUnsubscribe = null;
@@ -141,10 +162,19 @@
     var db = getDb();
     if (!db) return;
 
-    state.realtimeUnsubscribe = db.collection('attendance')
-      .where('date', '>=', formatDate(startDate))
-      .where('date', '<=', formatDate(endDate))
-      .onSnapshot(function(snapshot) {
+    try {
+      var role = await window.getCurrentUserRole?.();
+      var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
+      var query = db.collection('attendance')
+        .where('date', '>=', formatDate(startDate))
+        .where('date', '<=', formatDate(endDate));
+      if (scope) {
+        query = query.where('dept', '==', scope.department)
+                     .where('course', '==', scope.course)
+                     .where('division', '==', scope.division);
+      }
+
+      state.realtimeUnsubscribe = query.onSnapshot(function(snapshot) {
         var records = snapshot.docs.map(function(doc) {
           return { id: doc.id, ...doc.data() };
         });
@@ -159,6 +189,9 @@
       }, function(error) {
         console.error('Realtime attendance range listener error:', error);
       });
+    } catch (e) {
+      console.error('Failed to subscribe to attendance range realtime', e);
+    }
   }
 
   function formatDate(date) {
@@ -350,8 +383,21 @@
     const db = getDb();
     if (!db) return [];
     try {
-      const snapshot = await db.collection('users').get();
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      var role = await window.getCurrentUserRole?.();
+      var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
+      var query = db.collection('users');
+      if (scope) {
+        query = query.where('dept', '==', scope.department)
+                     .where('course', '==', scope.course)
+                     .where('division', '==', scope.division);
+      }
+      const snapshot = await query.get();
+      return snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(function(u) {
+          var userRole = u["role "] ?? u.role ?? null;
+          return userRole !== 'superAdmin' && userRole !== 'divisionAdmin';
+        });
     } catch (e) {
       console.error('Dashboard: Failed to load users', e);
       return [];
@@ -362,7 +408,15 @@
     const db = getDb();
     if (!db) return [];
     try {
-      const snapshot = await db.collection('attendance').where('date', '==', date).get();
+      var role = await window.getCurrentUserRole?.();
+      var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
+      var query = db.collection('attendance').where('date', '==', date);
+      if (scope) {
+        query = query.where('dept', '==', scope.department)
+                     .where('course', '==', scope.course)
+                     .where('division', '==', scope.division);
+      }
+      const snapshot = await query.get();
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       docs.sort((a, b) => (b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : 0) - (a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : 0));
       return docs;
@@ -376,10 +430,17 @@
     const db = getDb();
     if (!db) return [];
     try {
-      const snapshot = await db.collection('attendance')
+      var role = await window.getCurrentUserRole?.();
+      var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
+      var query = db.collection('attendance')
         .where('date', '>=', formatDate(startDate))
-        .where('date', '<=', formatDate(endDate))
-        .get();
+        .where('date', '<=', formatDate(endDate));
+      if (scope) {
+        query = query.where('dept', '==', scope.department)
+                     .where('course', '==', scope.course)
+                     .where('division', '==', scope.division);
+      }
+      const snapshot = await query.get();
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       docs.sort((a, b) => (b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : 0) - (a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : 0));
       return docs;
@@ -389,22 +450,29 @@
     }
   }
 
-  function subscribeToAttendance(date) {
+  async function subscribeToAttendance(date) {
     const db = getDb();
     if (!db) return null;
     unsubscribeFromAttendance();
 
     try {
-      const unsubscribe = db.collection('attendance')
-        .where('date', '==', date)
-        .onSnapshot(function(snapshot) {
-          const docs = snapshot.docs.map(function(doc) { return { id: doc.id, ...doc.data() }; });
-          docs.sort(function(a, b) { return (b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : 0) - (a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : 0); });
-          state.attendanceData = docs;
-          updateDashboard();
-        }, function(error) {
-          console.error('Dashboard: Realtime listener error', error);
-        });
+      var role = await window.getCurrentUserRole?.();
+      var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
+      var query = db.collection('attendance').where('date', '==', date);
+      if (scope) {
+        query = query.where('dept', '==', scope.department)
+                     .where('course', '==', scope.course)
+                     .where('division', '==', scope.division);
+      }
+
+      const unsubscribe = query.onSnapshot(function(snapshot) {
+        const docs = snapshot.docs.map(function(doc) { return { id: doc.id, ...doc.data() }; });
+        docs.sort(function(a, b) { return (b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : 0) - (a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : 0); });
+        state.attendanceData = docs;
+        updateDashboard();
+      }, function(error) {
+        console.error('Dashboard: Realtime listener error', error);
+      });
 
       state.realtimeUnsubscribe = unsubscribe;
       return unsubscribe;
@@ -801,7 +869,7 @@
 
         html += '<tr>' +
           '<td>' + escapeHtml(r.userId || '') + '</td>' +
-          '<td>' + escapeHtml(r.name || '') + '</td>' +
+           '<td>' + escapeHtml(getUserName(r) || '') + '</td>' +
           '<td>' + escapeHtml(r.dept || '') + '</td>' +
           '<td>' + escapeHtml(timeStr) + '</td>' +
           '<td><span class="badge ' + statusClass + '">' + escapeHtml(status) + '</span></td>' +
@@ -847,7 +915,7 @@
       html += '<div class="activity-item">' +
         '<div class="activity-dot" style="background:' + dotColor + ';box-shadow:0 0 6px ' + dotColor + ';"></div>' +
         '<div class="activity-info">' +
-          '<div class="activity-name">' + escapeHtml(r.name || 'Unknown') + '</div>' +
+          '<div class="activity-name">' + escapeHtml(getUserName(r) || 'Unknown') + '</div>' +
           '<div class="activity-dept">' + escapeHtml(r.dept || '') + '</div>' +
         '</div>' +
         '<div class="activity-time">' + escapeHtml(timeStr) + '</div>' +
@@ -904,7 +972,7 @@
       if (filters.search) {
         var term = filters.search.toLowerCase();
         var match = (r.userId || '').toLowerCase().indexOf(term) !== -1 ||
-                    (r.name || '').toLowerCase().indexOf(term) !== -1 ||
+                    (getUserName(r) || '').toLowerCase().indexOf(term) !== -1 ||
                     (r.dept || '').toLowerCase().indexOf(term) !== -1;
         if (!match) return false;
       }
@@ -1183,11 +1251,36 @@
   // ============================================
   // AUTH LISTENER
   // ============================================
+  async function loadUserRoleUI() {
+    var role = null;
+    try {
+      role = await window.getCurrentUserRole?.();
+    } catch (e) {
+      console.error('Failed to load user role', e);
+    }
+
+    var divisionAccountsNav = document.querySelector('.admin-nav-superadmin-only');
+    if (divisionAccountsNav) {
+      divisionAccountsNav.style.display = role === 'superAdmin' ? '' : 'none';
+    }
+
+    var adminRoleEl = document.querySelector('.admin-admin-role');
+    if (adminRoleEl) {
+      if (role === 'superAdmin') {
+        adminRoleEl.textContent = 'Super Admin';
+      } else if (role === 'divisionAdmin') {
+        adminRoleEl.textContent = 'Division Admin';
+      } else {
+        adminRoleEl.textContent = 'Admin';
+      }
+    }
+  }
+
   function setupAuthListener() {
     const auth = getAuth();
     if (!auth) return;
 
-    auth.onAuthStateChanged(function(user) {
+    auth.onAuthStateChanged(async function(user) {
       state.currentUser = user;
       const dashboard = document.getElementById('adminDashboard');
       const section = document.getElementById('section-dashboard');
@@ -1201,15 +1294,16 @@
         if (contentEl) contentEl.scrollTop = 0;
         window.scrollTo({ top: 0, behavior: 'instant' });
         loadDashboardData();
+        await loadUserRoleUI();
        } else {
-         dashboard.classList.add('hidden');
-         if (section) { section.classList.add('hidden'); section.setAttribute('hidden', 'hidden'); }
-         unsubscribeAllRealTime();
-         state.attendanceData = [];
-         state.usersData = [];
-         attendanceState.records = [];
-         resetLoginForm();
-       }
+        dashboard.classList.add('hidden');
+        if (section) { section.classList.add('hidden'); section.setAttribute('hidden', 'hidden'); }
+        unsubscribeAllRealTime();
+        state.attendanceData = [];
+        state.usersData = [];
+        attendanceState.records = [];
+        resetLoginForm();
+      }
 
     });
    }
@@ -1247,7 +1341,7 @@
       dashboard: 'Dashboard',
       analytics: 'Analytics',
       attendance: 'Attendance',
-      employees: 'Employees',
+      employees: 'Students',
       register: 'Register Employee',
       reports: 'Reports'
     };
@@ -1256,8 +1350,8 @@
       dashboard: 'Overview of biometric attendance activity',
       analytics: 'Detailed attendance analytics and insights',
       attendance: 'Attendance records and management',
-      employees: 'Registered personnel and staff',
-      register: 'Register new personnel with biometric data',
+      employees: 'Registered students',
+      register: 'Register new students with biometric data',
       reports: 'Export attendance reports and data'
     };
 
@@ -1612,7 +1706,7 @@
     if (!container) return;
 
     var cards = [
-      { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', label: 'Total Personnel', value: kpis.totalStaff, color: 'var(--text-primary)' },
+      { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', label: 'Total Students', value: kpis.totalStaff, color: 'var(--text-primary)' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11h-4l-2-4h-2l-2 4H2"/>', label: 'Present', value: kpis.present, color: '#2E8B57' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 16 12 12 12 8"/><line x1="12" y1="12" x2="12.01" y2="12"/></svg>', label: 'Late', value: kpis.late, color: '#D4A017' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>', label: 'Absent', value: kpis.absent, color: '#A52A2A' },
@@ -1637,7 +1731,7 @@
       if (filters.search) {
         var term = filters.search.toLowerCase();
         var match = (r.userId || '').toLowerCase().indexOf(term) !== -1 ||
-                    (r.name || '').toLowerCase().indexOf(term) !== -1;
+                    (getUserName(r) || '').toLowerCase().indexOf(term) !== -1;
         if (!match) return false;
       }
 
@@ -1774,7 +1868,7 @@
 
       html += '<tr>' +
         '<td>' + escapeHtml(r.userId || '') + '</td>' +
-        '<td>' + escapeHtml(r.name || '') + '</td>' +
+        '<td>' + escapeHtml(getUserName(r) || '') + '</td>' +
         '<td>' + escapeHtml(r.dept || '') + '</td>' +
         '<td>' + escapeHtml(r.appointment || '') + '</td>' +
         '<td>' + escapeHtml(dateStr) + '</td>' +
@@ -1856,7 +1950,7 @@
     }
 
     document.getElementById('detailEmployeeId').textContent = escapeHtml(record.userId || '--');
-    document.getElementById('detailName').textContent = escapeHtml(record.name || '--');
+    document.getElementById('detailName').textContent = escapeHtml(getUserName(record) || '--');
     document.getElementById('detailDept').textContent = escapeHtml(record.dept || '--');
     document.getElementById('detailAppointment').textContent = escapeHtml(record.appointment || '--');
     document.getElementById('detailDate').textContent = escapeHtml(dateStr);
@@ -1987,7 +2081,7 @@
 
       data.push({
         'Employee ID': r.userId || '',
-        'Name': r.name || '',
+        'Name': getUserName(r) || '',
         'Department': r.dept || '',
         'Appointment': r.appointment || '',
         'Date': r.date || '',
@@ -2220,14 +2314,14 @@
 
       var countEl = document.getElementById('employeeCount');
       if (countEl) {
-        countEl.innerHTML = '<span class="employee-count-badge">' + users.length + ' Personnel</span>';
+        countEl.innerHTML = '<span class="employee-count-badge">' + users.length + ' Students</span>';
       }
 
       populateEmployeeDeptFilter(users);
       renderEmployeeTable(users);
     } catch (e) {
       console.error('Failed to load employees', e);
-      if (container) container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;"><circle cx="9" cy="9" r="4"/><line x1="1.5" y1="1.5" x2="22.5" y2="22.5"/></svg></div><h4>Unable to load personnel</h4><p>Check Firebase connection and try again.</p></div>';
+      if (container) container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;"><circle cx="9" cy="9" r="4"/><line x1="1.5" y1="1.5" x2="22.5" y2="22.5"/></svg></div><h4>Unable to load students</h4><p>Check Firebase connection and try again.</p></div>';
     }
   }
 
@@ -2254,7 +2348,7 @@
     if (!container) return;
 
     if (!users || users.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h4>No employees registered</h4><p>No personnel records found in the Firestore database.</p></div>';
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h4>No students registered</h4><p>No student records found in the Firestore database.</p></div>';
       return;
     }
 
@@ -2269,7 +2363,7 @@
 
       html += '<tr>' +
         '<td>' + escapeHtml(u.userId || u.id || '') + '</td>' +
-        '<td>' + escapeHtml(u.name || '') + '</td>' +
+        '<td>' + escapeHtml(getUserName(u) || '') + '</td>' +
         '<td>' + escapeHtml(u.dept || '') + '</td>' +
         '<td>' + faceStatus + '</td>' +
         '<td>' + escapeHtml(regDate) + '</td>' +
@@ -2295,7 +2389,7 @@
       var matchesSearch = !term ||
         (u.userId && u.userId.toLowerCase().indexOf(term) !== -1) ||
         (u.id && u.id.toLowerCase().indexOf(term) !== -1) ||
-        (u.name && u.name.toLowerCase().indexOf(term) !== -1) ||
+        (getUserName(u) || '').toLowerCase().indexOf(term) !== -1 ||
         (u.dept && u.dept.toLowerCase().indexOf(term) !== -1);
 
       var matchesDept = !deptFilter || (u.dept === deptFilter);
@@ -2322,6 +2416,11 @@
 
     var profileId = document.getElementById('profileEmployeeId');
     var profileName = document.getElementById('profileName');
+    var profileRank = document.getElementById('profileRank');
+    var profileCourse = document.getElementById('profileCourse');
+    var profileTerm = document.getElementById('profileTerm');
+    var profileDivision = document.getElementById('profileDivision');
+    var profileSyndicate = document.getElementById('profileSyndicate');
     var profileDept = document.getElementById('profileDept');
     var profileAppt = document.getElementById('profileAppointment');
     var profilePhone = document.getElementById('profilePhone');
@@ -2333,7 +2432,12 @@
     var profilePhotoStatus = document.getElementById('profilePhotoStatus');
 
     if (profileId) profileId.textContent = escapeHtml(user.userId || user.id || '--');
-    if (profileName) profileName.textContent = escapeHtml(user.name || '--');
+    if (profileName) profileName.textContent = escapeHtml(getUserName(user) || '--');
+    if (profileRank) profileRank.textContent = escapeHtml(user.rank || '--');
+    if (profileCourse) profileCourse.textContent = escapeHtml(user.course || '--');
+    if (profileTerm) profileTerm.textContent = escapeHtml(user.term || '--');
+    if (profileDivision) profileDivision.textContent = escapeHtml(user.division || '--');
+    if (profileSyndicate) profileSyndicate.textContent = escapeHtml(user.syndicate || '--');
     if (profileDept) profileDept.textContent = escapeHtml(user.dept || '--');
     if (profileAppt) profileAppt.textContent = escapeHtml(user.appointment || '--');
     if (profilePhone) profilePhone.textContent = escapeHtml(user.phone || 'Not provided');
@@ -2503,7 +2607,7 @@
     currentDeleteEmployee = user;
     var nameEl = document.getElementById('deleteConfirmName');
     var idEl = document.getElementById('deleteConfirmId');
-    if (nameEl) nameEl.textContent = user.name || user.userId || user.id || '--';
+    if (nameEl) nameEl.textContent = getUserName(user) || user.userId || user.id || '--';
     if (idEl) idEl.textContent = user.userId || user.id || '--';
 
     var overlay = document.getElementById('deleteConfirmOverlay');
@@ -2545,7 +2649,7 @@
 
     var firestoreDocId = currentDeleteEmployee.id;
     var employeeUserId = currentDeleteEmployee.userId || currentDeleteEmployee.id;
-    var employeeName = currentDeleteEmployee.name || '--';
+    var employeeName = getUserName(currentDeleteEmployee) || '--';
 
     if (!firestoreDocId || typeof firestoreDocId !== 'string' || firestoreDocId.trim() === '') {
       showStatus('Invalid employee record. Missing document ID.', 'error');
@@ -2668,6 +2772,164 @@
     });
   }
 
+  function setupDivisionAccounts() {
+    var createBtn = document.getElementById('createDivisionAccountBtn');
+    var courseEl = document.getElementById('divAccountCourse');
+    var divisionEl = document.getElementById('divAccountDivision');
+    var createModalCancelBtn = document.getElementById('divAccountCancelBtn');
+    var createModalCreateBtn = document.getElementById('divAccountCreateBtn');
+    var editDivCourse = document.getElementById('editDivCourse');
+    var editDivDivision = document.getElementById('editDivDivision');
+    var editDivSaveBtn = document.getElementById('editDivSaveBtn');
+    var editDivCancelBtn = document.getElementById('editDivCancelBtn');
+
+    function closeCreateDivisionAccountModal() {
+      var modal = document.getElementById('createDivisionAccountModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.setAttribute('hidden', 'hidden');
+        document.body.style.overflow = '';
+        var formIds = ['divAccountName', 'divAccountEmail', 'divAccountPassword', 'divAccountDept', 'divAccountCourse', 'divAccountDivision'];
+        formIds.forEach(function(id) {
+          var el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        if (divisionEl) {
+          divisionEl.innerHTML = '<option value="">Select Division</option>';
+          divisionEl.disabled = true;
+        }
+      }
+    }
+
+    if (createBtn) {
+      createBtn.addEventListener('click', function() {
+        var modal = document.getElementById('createDivisionAccountModal');
+        if (modal) {
+          modal.classList.remove('hidden');
+          modal.removeAttribute('hidden');
+          document.body.style.overflow = 'hidden';
+        }
+      });
+    }
+
+    if (createModalCancelBtn) {
+      createModalCancelBtn.addEventListener('click', closeCreateDivisionAccountModal);
+    }
+
+    var createModalCloseBtn = document.querySelector('[data-close="createDivisionAccountModal"]');
+    if (createModalCloseBtn) {
+      createModalCloseBtn.addEventListener('click', closeCreateDivisionAccountModal);
+    }
+
+    var createModalBackdrop = document.querySelector('#createDivisionAccountModal .modal-backdrop');
+    if (createModalBackdrop) {
+      createModalBackdrop.addEventListener('click', closeCreateDivisionAccountModal);
+    }
+
+    var createDivisionModal = document.getElementById('createDivisionAccountModal');
+    if (createDivisionModal) {
+      createDivisionModal.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+          closeCreateDivisionAccountModal();
+        }
+      });
+    }
+
+    if (createModalCreateBtn) {
+      createModalCreateBtn.addEventListener('click', async function() {
+        var accountData = {
+          accountName: document.getElementById('divAccountName')?.value.trim(),
+          email: document.getElementById('divAccountEmail')?.value.trim(),
+          password: document.getElementById('divAccountPassword')?.value,
+          department: document.getElementById('divAccountDept')?.value,
+          course: document.getElementById('divAccountCourse')?.value,
+          division: document.getElementById('divAccountDivision')?.value
+        };
+
+        if (!accountData.accountName || !accountData.email || !accountData.password || !accountData.department || !accountData.course || !accountData.division) {
+          showStatus('All fields are required', 'error');
+          return;
+        }
+
+        try {
+          createModalCreateBtn.disabled = true;
+          createModalCreateBtn.textContent = 'Creating...';
+          await createDivisionAdminAccount(accountData);
+          showStatus('Division account created successfully', 'success');
+          var modal = document.getElementById('createDivisionAccountModal');
+          if (modal) {
+            modal.classList.add('hidden');
+            modal.setAttribute('hidden', 'hidden');
+            document.body.style.overflow = '';
+          }
+          loadDivisionAccounts();
+        } catch (e) {
+          showStatus('Failed to create account: ' + (e.message || 'Unknown error'), 'error');
+        } finally {
+          createModalCreateBtn.disabled = false;
+          createModalCreateBtn.textContent = 'Create Account';
+        }
+      });
+    }
+
+    if (courseEl && divisionEl) {
+      courseEl.addEventListener('change', function() {
+        var course = courseEl.value;
+        if (!course || !COURSE_DATA[course]) {
+          divisionEl.innerHTML = '<option value="">Select Division</option>';
+          divisionEl.disabled = true;
+          return;
+        }
+        var divisions = COURSE_DATA[course] ? Object.keys(COURSE_DATA[course].divisions) : [];
+        divisionEl.innerHTML = '<option value="">Select Division</option>';
+        divisions.forEach(function(div) {
+          var option = document.createElement('option');
+          option.value = div;
+          option.textContent = div;
+          divisionEl.appendChild(option);
+        });
+        divisionEl.disabled = false;
+      });
+    }
+
+    if (editDivCourse && editDivDivision) {
+      editDivCourse.addEventListener('change', function() {
+        var course = editDivCourse.value;
+        if (!course || !COURSE_DATA[course]) {
+          editDivDivision.innerHTML = '<option value="">Select Division</option>';
+          editDivDivision.disabled = true;
+          return;
+        }
+        var divisions = COURSE_DATA[course] ? Object.keys(COURSE_DATA[course].divisions) : [];
+        editDivDivision.innerHTML = '<option value="">Select Division</option>';
+        divisions.forEach(function(div) {
+          var option = document.createElement('option');
+          option.value = div;
+          option.textContent = div;
+          editDivDivision.appendChild(option);
+        });
+        editDivDivision.disabled = false;
+      });
+    }
+
+    if (editDivSaveBtn) {
+      editDivSaveBtn.addEventListener('click', function() {
+        saveDivisionScope();
+      });
+    }
+
+    if (editDivCancelBtn) {
+      editDivCancelBtn.addEventListener('click', function() {
+        var modal = document.getElementById('editDivisionScopeModal');
+        if (modal) {
+          modal.classList.add('hidden');
+          modal.setAttribute('hidden', 'hidden');
+          document.body.style.overflow = '';
+        }
+      });
+    }
+  }
+
   // ============================================
   // INITIALIZATION
   // ============================================
@@ -2717,7 +2979,8 @@
       initReports();
       setupReportButtons();
      setupSignOutButtons();
-     updateHeaderDate();
+     setupDivisionAccounts();
+      updateHeaderDate();
 
     var firebaseReady = await waitForFirebase();
     if (firebaseReady) {
@@ -2733,15 +2996,16 @@
       state.currentUser = auth.currentUser;
        state.currentDate = formatDate(new Date());
        showSection('dashboard');
-      
-      if (firebaseReady) {
-        loadDashboardData();
-      } else {
-        var kpiContainer = document.getElementById('dashKpiCards');
-        if (kpiContainer) {
-          kpiContainer.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px;">Firebase connection unavailable. Please refresh the page.</div>';
-        }
-      }
+       
+       if (firebaseReady) {
+         loadDashboardData();
+         await loadUserRoleUI();
+       } else {
+         var kpiContainer = document.getElementById('dashKpiCards');
+         if (kpiContainer) {
+           kpiContainer.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px;">Firebase connection unavailable. Please refresh the page.</div>';
+         }
+       }
     }
   }
 
@@ -3012,7 +3276,7 @@
       {
         title: 'Attendance Rate',
         value: metrics.attendanceRate + '%',
-        desc: metrics.verified + ' of ' + metrics.totalStaff + ' personnel verified' + deptLabel,
+        desc: metrics.verified + ' of ' + metrics.totalStaff + ' students verified' + deptLabel,
         trend: null,
         trendLabel: ''
       },
@@ -3033,7 +3297,7 @@
       {
         title: 'Verified',
         value: metrics.verified,
-        desc: 'Unique personnel verified' + deptLabel,
+        desc: 'Unique students verified' + deptLabel,
         trend: null,
         trendLabel: ''
       },
@@ -3526,7 +3790,7 @@
       var userId = u.userId || u.id;
       employeeStats[userId] = {
         userId: userId,
-        name: u.name || '',
+        name: getUserName(u) || '',
         dept: u.dept || '',
         appointment: u.appointment || '',
         totalDays: totalDaysInPeriod,
@@ -3579,11 +3843,11 @@
     var employeeData = getAnalyticsEmployeeInsightsData(records, users, analyticsState.period, analyticsState.customRange);
 
     if (searchTerm) {
-      employeeData = employeeData.filter(function(e) {
-        return (e.userId || '').toLowerCase().indexOf(searchTerm) !== -1 ||
-               (e.name || '').toLowerCase().indexOf(searchTerm) !== -1 ||
-               (e.dept || '').toLowerCase().indexOf(searchTerm) !== -1;
-      });
+       employeeData = employeeData.filter(function(e) {
+         return (e.userId || '').toLowerCase().indexOf(searchTerm) !== -1 ||
+                (getUserName(e) || '').toLowerCase().indexOf(searchTerm) !== -1 ||
+                (e.dept || '').toLowerCase().indexOf(searchTerm) !== -1;
+       });
     }
 
     if (deptFilter) {
@@ -3601,7 +3865,7 @@
         var rateColor = e.rate >= 80 ? '#2E8B57' : (e.rate >= 50 ? '#D4A017' : '#8B1E1E');
         html += '<tr>' +
           '<td>' + escapeHtml(e.userId || '') + '</td>' +
-          '<td>' + escapeHtml(e.name || '') + '</td>' +
+          '<td>' + escapeHtml(getUserName(e) || '') + '</td>' +
           '<td>' + escapeHtml(e.dept || '') + '</td>' +
           '<td>' + escapeHtml(e.appointment || '') + '</td>' +
           '<td>' + escapeHtml(String(e.totalDays)) + '</td>' +
@@ -3914,7 +4178,7 @@
       yPos += 6;
 
       var kpiData = [
-        ['Total Personnel', totalStaff],
+        ['Total Students', totalStaff],
         ['Verified', verifiedCount],
         ['Late', lateCount],
         ['Blocked', blockedCount],
@@ -3950,7 +4214,7 @@
         });
 
         yPos = drawPdfTable(doc, {
-          headers: ['Department', 'Personnel', 'Verified', 'Late', 'Absent', 'Rate'],
+          headers: ['Department', 'Students', 'Verified', 'Late', 'Absent', 'Rate'],
           rows: deptBody,
           y: yPos,
           columnWidths: [60, 35, 35, 35, 35, 30],
@@ -3985,7 +4249,7 @@
           var locStatus = getAttendanceLocationStatus(r);
           return [
             r.userId || '',
-            r.name || '',
+            getUserName(r) || '',
             r.dept || '',
             r.appointment || '',
             dateStr,
@@ -4211,11 +4475,7 @@
       return;
     }
     try {
-      var snapshot = await db.collection('users').get();
-      reportsState.users = snapshot.docs.map(function(doc) {
-        var data = doc.data();
-        return { id: doc.id, ...data };
-      });
+      reportsState.users = await loadUsers();
     } catch (e) {
       console.error('Reports: Failed to load users', e);
       reportsState.users = [];
@@ -4247,8 +4507,8 @@
     var html = '<option value="">All Employees</option>';
 
     var sorted = users.slice().sort(function(a, b) {
-      var nameA = (a.name || a.id || '').toLowerCase();
-      var nameB = (b.name || b.id || '').toLowerCase();
+      var nameA = (getUserName(a) || a.id || '').toLowerCase();
+      var nameB = (getUserName(b) || b.id || '').toLowerCase();
       if (nameA < nameB) return -1;
       if (nameA > nameB) return 1;
       return 0;
@@ -4256,7 +4516,7 @@
 
     sorted.forEach(function(u) {
       var empId = u.userId || u.id || '';
-      var empName = u.name || '';
+      var empName = getUserName(u) || '';
       var label = empId ? (empId + ' - ' + empName) : empName;
       html += '<option value="' + escapeHtml(empId) + '">' + escapeHtml(label) + '</option>';
     });
@@ -4456,7 +4716,7 @@
     var html = '<div class="reports-kpi-grid">';
 
     var cards = [
-      { label: 'Total Personnel', value: kpis.totalStaff, color: 'var(--text-primary)' },
+      { label: 'Total Students', value: kpis.totalStaff, color: 'var(--text-primary)' },
       { label: 'Verified', value: kpis.verified, color: '#2E8B57' },
       { label: 'Late', value: kpis.late, color: '#D4A017' },
       { label: 'Blocked', value: kpis.blocked, color: '#8B1E2E' },
@@ -4482,7 +4742,7 @@
 
     var html = '<table class="table reports-dept-table"><thead><tr>' +
       '<th>Department</th>' +
-      '<th>Personnel</th>' +
+      '<th>Students</th>' +
       '<th>Verified</th>' +
       '<th>Late</th>' +
       '<th>Blocked</th>' +
@@ -4600,7 +4860,7 @@
 
       html += '<tr>' +
         '<td>' + escapeHtml(r.userId || '') + '</td>' +
-        '<td>' + escapeHtml(r.name || '') + '</td>' +
+        '<td>' + escapeHtml(getUserName(r) || '') + '</td>' +
         '<td>' + escapeHtml(r.dept || '') + '</td>' +
         '<td>' + escapeHtml(r.appointment || '') + '</td>' +
         '<td>' + escapeHtml(r.date || '') + '</td>' +
@@ -4705,7 +4965,7 @@
         ['Filters', data.filterDesc || 'None'],
         [],
         ['Summary KPIs'],
-        ['Total Personnel', kpis.totalStaff],
+        ['Total Students', kpis.totalStaff],
         ['Verified', kpis.verified],
         ['Late', kpis.late],
         ['Blocked', kpis.blocked],
@@ -4722,7 +4982,7 @@
       // Department Performance Sheet
       if (deptStats && deptStats.length > 0) {
         var deptHeaderRows = getRestrictedExcelBrandingRows('Department Performance');
-        var deptHeaders = [['Department', 'Personnel', 'Verified', 'Late', 'Blocked', 'Absent', 'Rate']];
+        var deptHeaders = [['Department', 'Students', 'Verified', 'Late', 'Blocked', 'Absent', 'Rate']];
         var deptRows = deptStats.map(function(d) {
           return [d.dept, d.personnel, d.verified, d.late, d.blocked, d.absent, d.rate + '%'];
         });
@@ -4756,7 +5016,7 @@
 
           return {
             'Employee ID': r.userId || '',
-            'Name': r.name || '',
+            'Name': getUserName(r) || '',
             'Department': r.dept || '',
             'Appointment': r.appointment || '',
             'Date': r.date || '',
@@ -4848,7 +5108,7 @@
       yPos += 5;
 
       var kpiData = [
-        ['Total Personnel', kpis.totalStaff],
+        ['Total Students', kpis.totalStaff],
         ['Verified', kpis.verified],
         ['Late', kpis.late],
         ['Blocked', kpis.blocked],
@@ -4881,7 +5141,7 @@
         });
 
         yPos = drawPdfTable(doc, {
-          headers: ['Department', 'Personnel', 'Verified', 'Late', 'Blocked', 'Absent', 'Rate'],
+          headers: ['Department', 'Students', 'Verified', 'Late', 'Blocked', 'Absent', 'Rate'],
           rows: deptBody,
           y: yPos,
           columnWidths: [50, 28, 28, 28, 28, 28, 20],
@@ -4910,7 +5170,7 @@
           var distStr = dist !== null ? dist + ' m' : '--';
           return [
             r.userId || '',
-            r.name || '',
+            getUserName(r) || '',
             r.dept || '',
             r.appointment || '',
             r.date || '',
@@ -5197,19 +5457,190 @@
 
   // Reports navigation handled by setupNavigation nav handler calling loadReportsSection
 
-  // Patch navigation to load analytics when clicked
+  // ============================================
+  // DIVISION ACCOUNTS MANAGEMENT
+  // ============================================
+  async function loadDivisionAccounts() {
+    var container = document.getElementById('divisionAccountsTable');
+    if (!container || !getDb()) return;
+
+    container.innerHTML = '<div class="spinner-overlay"><div class="spinner"></div></div>';
+
+    try {
+      var snapshot = await getDb().collection('users')
+        .where('role', '==', 'divisionAdmin')
+        .orderBy('createdAt', 'desc')
+        .get();
+
+      var html = '<table class="table"><thead><tr><th>Account Name</th><th>Email</th><th>Role</th><th>Department</th><th>Course</th><th>Division</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>';
+
+      if (snapshot.empty) {
+        html += '<tr><td colspan="9">No division accounts found</td></tr>';
+      } else {
+        snapshot.docs.forEach(function(doc) {
+          var data = doc.data();
+          var created = data.createdAt && data.createdAt.toDate ? data.createdAt.toDate().toLocaleDateString() : '--';
+          var status = data.status || 'Active';
+          html += '<tr>' +
+            '<td>' + escapeHtml(getUserName(data) || '--') + '</td>' +
+            '<td>' + escapeHtml(data.email || '--') + '</td>' +
+            '<td>Division Admin</td>' +
+            '<td>' + escapeHtml(data.dept || '--') + '</td>' +
+            '<td>' + escapeHtml(data.course || '--') + '</td>' +
+            '<td>' + escapeHtml(data.division || '--') + '</td>' +
+            '<td>' + escapeHtml(status) + '</td>' +
+            '<td>' + escapeHtml(created) + '</td>' +
+            '<td><button class="employee-action-btn" data-div-uid="' + escapeHtml(doc.id) + '">Edit Scope</button> <button class="employee-action-btn delete-btn" data-div-uid="' + escapeHtml(doc.id) + '" style="background:#dc3545;color:#fff;">Delete</button></td>' +
+            '</tr>';
+        });
+      }
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+
+      container.querySelectorAll('[data-div-uid]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var uid = this.getAttribute('data-div-uid');
+          if (this.classList.contains('delete-btn')) {
+            deleteDivisionAdmin(uid);
+          } else {
+            openEditDivisionScopeModal(uid);
+          }
+        });
+      });
+    } catch (e) {
+      console.error('Failed to load division accounts', e);
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;"><circle cx="9" cy="9" r="4"/><line x1="1.5" y1="1.5" x2="22.5" y2="22.5"/></svg></div><h4>Unable to load division accounts</h4><p>Check Firebase connection and try again.</p></div>';
+    }
+  }
+
+  async function deleteDivisionAdmin(uid) {
+    if (!confirm('Are you sure you want to delete this Division Admin account? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await deleteDivisionAdminAccount(uid);
+      showStatus('Division Admin account deleted successfully', 'success');
+      loadDivisionAccounts();
+    } catch (e) {
+      showStatus('Failed to delete account: ' + (e.message || 'Unknown error'), 'error');
+    }
+  }
+
+  async function openEditDivisionScopeModal(uid) {
+    var modal = document.getElementById('editDivisionScopeModal');
+    if (!modal) return;
+
+    try {
+      var doc = await getDb().collection('users').doc(uid).get();
+      if (!doc.exists) {
+        showStatus('Division account not found', 'error');
+        return;
+      }
+
+      var data = doc.data();
+      var deptEl = document.getElementById('editDivDept');
+      var courseEl = document.getElementById('editDivCourse');
+      var divisionEl = document.getElementById('editDivDivision');
+      var uidEl = document.getElementById('editDivUid');
+      var accountNameEl = document.getElementById('editDivAccountName');
+
+      if (uidEl) uidEl.value = uid;
+      if (accountNameEl) accountNameEl.value = getUserName(data) || '';
+      if (deptEl) deptEl.value = data.dept || '';
+      if (courseEl) {
+        courseEl.value = data.course || '';
+        if (data.course) {
+          var divisions = COURSE_DATA[data.course] ? Object.keys(COURSE_DATA[data.course].divisions) : [];
+          divisionEl.innerHTML = '<option value="">Select Division</option>';
+          divisions.forEach(function(div) {
+            var option = document.createElement('option');
+            option.value = div;
+            option.textContent = div;
+            divisionEl.appendChild(option);
+          });
+          divisionEl.disabled = false;
+        }
+        if (data.division) divisionEl.value = data.division;
+      }
+
+      modal.classList.remove('hidden');
+      modal.removeAttribute('hidden');
+      document.body.style.overflow = 'hidden';
+    } catch (e) {
+      showStatus('Failed to load account details', 'error');
+    }
+  }
+
+  async function saveDivisionScope() {
+    var uid = document.getElementById('editDivUid')?.value;
+    var accountName = document.getElementById('editDivAccountName')?.value.trim();
+    var dept = document.getElementById('editDivDept')?.value;
+    var course = document.getElementById('editDivCourse')?.value;
+    var division = document.getElementById('editDivDivision')?.value;
+
+    if (!uid || !dept || !course || !division) {
+      showStatus('All scope fields are required', 'error');
+      return;
+    }
+
+    try {
+      await updateDivisionAdminScope({ uid, accountName, department: dept, course, division });
+      showStatus('Division scope updated successfully', 'success');
+      var modal = document.getElementById('editDivisionScopeModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.setAttribute('hidden', 'hidden');
+        document.body.style.overflow = '';
+      }
+      loadDivisionAccounts();
+    } catch (e) {
+      showStatus('Failed to update scope: ' + (e.message || 'Unknown error'), 'error');
+    }
+  }
+
+  // Patch navigation to include Division Accounts
   var originalSetupNavigation = setupNavigation;
   setupNavigation = function() {
     originalSetupNavigation();
+    var titles = {
+      dashboard: 'Super Admin Dashboard',
+      analytics: 'Analytics',
+      attendance: 'Attendance',
+      employees: 'Students',
+      register: 'Register Employee',
+      reports: 'Reports',
+      divisionAccounts: 'Division Accounts'
+    };
+
+    var subtitles = {
+      dashboard: 'Overview of biometric attendance activity',
+      analytics: 'Detailed attendance analytics and insights',
+      attendance: 'Attendance records and management',
+      employees: 'Registered students',
+      register: 'Register new students with biometric data',
+      reports: 'Export attendance reports and data',
+      divisionAccounts: 'Manage restricted Division Admin accounts'
+    };
+
     var navItems = document.querySelectorAll('.admin-nav-item[data-section]');
     navItems.forEach(function(item) {
-      item.addEventListener('click', function() {
+      item.addEventListener('click', function(e) {
         var sectionId = this.getAttribute('data-section');
-        if (sectionId === 'analytics') {
-          setTimeout(function() {
-            initAnalytics();
-            loadAnalyticsData();
-          }, 50);
+        if (!sectionId) return;
+
+        if (titles[sectionId]) {
+          var titleEl = document.getElementById('adminPageTitle');
+          if (titleEl) titleEl.textContent = titles[sectionId];
+        }
+        if (subtitles[sectionId]) {
+          var subtitleEl = document.getElementById('adminPageSubtitle');
+          if (subtitleEl) subtitleEl.textContent = subtitles[sectionId];
+        }
+
+        if (sectionId === 'divisionAccounts') {
+          loadDivisionAccounts();
         }
       });
     });

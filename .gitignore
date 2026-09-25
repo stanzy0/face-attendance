@@ -71,3 +71,6 @@ node_modules/
 # Kilo Code local skills and configuration
 .kilo/
 
+
+.vercel
+.env*

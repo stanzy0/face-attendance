@@ -127,6 +127,10 @@
       .replace(/'/g, '&#039;');
   }
 
+  function getUserName(data) {
+    return data?.["name "] ?? data?.name ?? null;
+  }
+
   function updateRegisteredPhotoCard(user) {
     const card = document.getElementById('registeredPhotoCard');
     const img = document.getElementById('registeredPhotoImg');
@@ -386,7 +390,7 @@
       if (!snapshot.empty) {
         const doc = snapshot.docs[0];
         const data = doc.data();
-        lastVerificationName.textContent = data.name || '--';
+        lastVerificationName.textContent = getUserName(data) || '--';
         lastVerificationId.textContent = data.userId || '--';
         lastVerificationDept.textContent = data.dept || '--';
         if (data.distance !== undefined) {

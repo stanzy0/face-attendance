@@ -135,6 +135,158 @@ async function adminSignOut() {
   }
 }
 
+function getUserName(data) {
+  return data?.["name "] ?? data?.name ?? null;
+}
+
+async function getCurrentUserRole() {
+  const user = auth.currentUser;
+  if (!user) return null;
+  try {
+    console.log('[ROLE DEBUG] Auth email:', user.email);
+    console.log('[ROLE DEBUG] Auth UID:', user.uid);
+    console.log('[ROLE DEBUG] Direct document path:', 'users/' + user.uid);
+
+    let doc = await db.collection('users').doc(user.uid).get();
+    console.log('[ROLE DEBUG] Direct document exists:', doc.exists);
+    console.log('[ROLE DEBUG] Direct document data:', doc.exists ? doc.data() : null);
+
+    if (doc.exists) {
+      const role = doc.data()?.["role "] ?? doc.data()?.role ?? null;
+      console.log('[ROLE DEBUG] Direct role:', role);
+      return role;
+    }
+
+    console.log('[ROLE DEBUG] Fallback query started');
+    const snapshot = await db.collection('users')
+      .where('userId', '==', user.uid)
+      .limit(1)
+      .get();
+    console.log('[ROLE DEBUG] Fallback query empty:', snapshot.empty);
+    if (!snapshot.empty) {
+      const fallbackDoc = snapshot.docs[0];
+      console.log('[ROLE DEBUG] Fallback query document ID:', fallbackDoc.id);
+      console.log('[ROLE DEBUG] Fallback query data:', fallbackDoc.data());
+      const role = fallbackDoc.data()?.["role "] ?? fallbackDoc.data()?.role ?? null;
+      console.log('[ROLE DEBUG] Fallback role:', role);
+      return role;
+    }
+    console.log('[ROLE DEBUG] Fallback role: null');
+    return null;
+  } catch (e) {
+    console.error('[ROLE DEBUG] Error loading role:', e);
+    return null;
+  }
+}
+
+async function isSuperAdmin() {
+  return (await getCurrentUserRole()) === 'superAdmin';
+}
+
+async function isDivisionAdmin() {
+  return (await getCurrentUserRole()) === 'divisionAdmin';
+}
+
+async function getDivisionAdminScope() {
+  const user = auth.currentUser;
+  if (!user) return null;
+  try {
+    const doc = await db.collection('users').doc(user.uid).get();
+    if (!doc.exists) return null;
+    const data = doc.data();
+    const role = data?.["role "] ?? data?.role ?? null;
+    if (role !== 'divisionAdmin') return null;
+    return { department: data.dept || '', course: data.course || '', division: data.division || '' };
+  } catch (e) {
+    console.error('Failed to load division admin scope', e);
+    return null;
+  }
+}
+
+async function createDivisionAdminAccount(accountData) {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Not authenticated');
+    const idToken = await user.getIdToken();
+
+    const response = await fetch('/api/admin/division-accounts', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + idToken
+      },
+      body: JSON.stringify(accountData)
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to create Division Admin account');
+    }
+    return result;
+  } catch (e) {
+    console.error('createDivisionAdminAccount error', e);
+    throw e;
+  }
+}
+
+async function updateDivisionAdminScope(accountData) {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Not authenticated');
+    const idToken = await user.getIdToken();
+
+    const response = await fetch('/api/admin/division-accounts/' + encodeURIComponent(accountData.uid), {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + idToken
+      },
+      body: JSON.stringify(accountData)
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to update Division Admin scope');
+    }
+    return result;
+  } catch (e) {
+    console.error('updateDivisionAdminScope error', e);
+    throw e;
+  }
+}
+
+async function deleteDivisionAdminAccount(uid) {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Not authenticated');
+    const idToken = await user.getIdToken();
+
+    const response = await fetch('/api/admin/division-accounts/' + encodeURIComponent(uid), {
+      method: 'DELETE',
+      headers: {
+        'Authorization': 'Bearer ' + idToken
+      }
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to delete Division Admin account');
+    }
+    return result;
+  } catch (e) {
+    console.error('deleteDivisionAdminAccount error', e);
+    throw e;
+  }
+}
+
+window.getCurrentUserRole = getCurrentUserRole;
+window.isSuperAdmin = isSuperAdmin;
+window.isDivisionAdmin = isDivisionAdmin;
+window.getDivisionAdminScope = getDivisionAdminScope;
+window.createDivisionAdminAccount = createDivisionAdminAccount;
+window.updateDivisionAdminScope = updateDivisionAdminScope;
+window.deleteDivisionAdminAccount = deleteDivisionAdminAccount;
+
 let reportMode = false; // Global toggle for daily report vs records
 
 async function loadAttendanceRecords(dateStr) {
@@ -152,10 +304,21 @@ async function loadAttendanceRecords(dateStr) {
   showStatus('Loading records for ' + date + '...', 'info');
   
   try {
-    const snapshot = await db.collection('attendance').where('date', '==', date).get();
+    const role = await getCurrentUserRole();
+    const scope = role === 'divisionAdmin' ? await getDivisionAdminScope() : null;
+
+    let query = db.collection('attendance').where('date', '==', date);
+
+    if (scope) {
+      query = query.where('dept', '==', scope.department)
+                   .where('course', '==', scope.course)
+                   .where('division', '==', scope.division);
+    }
+
+    const snapshot = await query.get();
     snapshot.docs.sort((a, b) => (b.data().timestamp?.toMillis() || 0) - (a.data().timestamp?.toMillis() || 0));
 
-    let html = '<table><thead><tr><th>Photo</th><th>ID</th><th>Name</th><th>Dept</th><th>Appt</th><th>GPS</th><th>Time</th></tr></thead><tbody>';
+    let html = '<table><thead><tr><th>Photo</th><th>ID</th><th>Name</th><th>Dept</th><th>Status</th><th>GPS</th><th>Time</th></tr></thead><tbody>';
     if (snapshot.empty) {
       html += '<tr><td colspan="7">No records</td></tr>';
     } else {
@@ -165,9 +328,9 @@ async function loadAttendanceRecords(dateStr) {
         html += `<tr class="present-row">
           <td>${photoHtml}</td>
           <td>${d.userId||'N/A'}</td>
-          <td>${d.name||'N/A'}</td>
+          <td>${getUserName(d)||'N/A'}</td>
           <td>${d.dept||'N/A'}</td>
-          <td>${d.appointment||'N/A'}</td>
+          <td>${d.status||'N/A'}</td>
           <td>${d.location ? d.location.lat.toFixed(4) + ',' + d.location.lng.toFixed(4) : 'N/A'}</td>
           <td>${d.timestamp ? d.timestamp.toDate().toLocaleTimeString() : 'N/A'}</td>
         </tr>`;
@@ -193,13 +356,27 @@ async function loadDailyReport(dateStr) {
   showStatus('Generating daily report for ' + date + '...', 'info');
   
   try {
-    const usersSnapshot = await db.collection('users').get();
-    const presentSnapshot = await db.collection('attendance')
-      .where('date', '==', date)
-      .get();
+    const role = await getCurrentUserRole();
+    const scope = role === 'divisionAdmin' ? await getDivisionAdminScope() : null;
+
+    let usersQuery = db.collection('users');
+    if (scope) {
+      usersQuery = usersQuery.where('dept', '==', scope.department)
+                             .where('course', '==', scope.course)
+                             .where('division', '==', scope.division);
+    }
+
+    const usersSnapshot = await usersQuery.get();
+    let presentSnapshot = db.collection('attendance').where('date', '==', date);
+    if (scope) {
+      presentSnapshot = presentSnapshot.where('dept', '==', scope.department)
+                                       .where('course', '==', scope.course)
+                                       .where('division', '==', scope.division);
+    }
+    const presentSnap = await presentSnapshot.get();
     
     const allUsers = Array.from(usersSnapshot.docs).map(doc => doc.data().userId || doc.id);
-    const presentUsers = new Set(presentSnapshot.docs.map(doc => doc.data().userId));
+    const presentUsers = new Set(presentSnap.docs.map(doc => doc.data().userId));
     const absentUsers = allUsers.filter(id => !presentUsers.has(id));
     
     const total = allUsers.length;
@@ -220,7 +397,7 @@ async function loadDailyReport(dateStr) {
     presentSnapshot.forEach(doc => {
       const d = doc.data();
       html += `<tr class="present-row">
-        <td>✅</td><td>${d.userId}</td><td>${d.name}</td><td>${d.dept}</td><td>${d.appointment}</td>
+        <td>✅</td><td>${d.userId}</td><td>${getUserName(d)}</td><td>${d.dept}</td><td>${d.appointment}</td>
       </tr>`;
     });
     
@@ -228,7 +405,7 @@ async function loadDailyReport(dateStr) {
       const userDoc = usersSnapshot.docs.find(doc => (doc.data().userId || doc.id) === userId);
       const userData = userDoc ? userDoc.data() : {};
       html += `<tr class="absent-row">
-        <td>❌</td><td>${userId}</td><td>${userData.name || 'N/A'}</td><td>${userData.dept || 'N/A'}</td><td>${userData.appointment || 'N/A'}</td>
+        <td>❌</td><td>${userId}</td><td>${getUserName(userData)}</td><td>${userData.dept || 'N/A'}</td><td>${userData.appointment || 'N/A'}</td>
       </tr>`;
     });
     
@@ -245,7 +422,7 @@ async function loadDailyReport(dateStr) {
 
 
 function clearRegisterForm() {
-  ['regUserId','regName','regDept','regAppointment','regPhone'].forEach(id => {
+  ['regUserId','regName','regDept','regAppointment','regPhone','regRank','regCourse','regTerm','regDivision','regSyndicate'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -345,7 +522,7 @@ async function exportExcel() {
       const d = doc.data();
       data.push({
         'User ID': d.userId || '',
-        'Name': d.name || '',
+        'Name': getUserName(d) || '',
         'Department': d.dept || '',
         'Appointment': d.appointment || '',
         'GPS Lat': d.location?.lat || '',
@@ -396,7 +573,7 @@ async function exportAbsentExcel() {
       .filter(user => !presentUsers.has(user.userId || user.id))
       .map(user => ({
         'User ID': user.userId || user.id,
-        'Name': user.name || '',
+        'Name': getUserName(user) || '',
         'Department': user.dept || '',
         'Appointment': user.appointment || '',
         'Status': 'ABSENT',
@@ -467,7 +644,7 @@ function generatePdf(doc) {
         const d = doc.data();
         tableData.push([
           d.userId || '',
-          d.name || '',
+          getUserName(d) || '',
           d.dept || '',
           d.appointment || '',
           d.location ? `${d.location.lat?.toFixed(4)},${d.location.lng?.toFixed(4)}` : '',
@@ -508,11 +685,20 @@ async function registerFace() {
     name: document.getElementById('regName')?.value.trim(),
     dept: document.getElementById('regDept')?.value.trim(),
     appointment: document.getElementById('regAppointment')?.value.trim() || '',
-    phone: document.getElementById('regPhone')?.value.trim() || ''
+    phone: document.getElementById('regPhone')?.value.trim() || '',
+    rank: document.getElementById('regRank')?.value || '',
+    course: document.getElementById('regCourse')?.value || '',
+    term: document.getElementById('regTerm')?.value || '',
+    division: document.getElementById('regDivision')?.value || '',
+    syndicate: document.getElementById('regSyndicate')?.value || ''
   };
-  
+
   if (!formData.userId || !formData.name || !formData.dept) {
-    return showStatus('Fill User ID, Name, Department', 'error');
+    return showStatus('Fill Service No., Name, Department', 'error');
+  }
+
+  if (!validateCascadingFields(formData)) {
+    return;
   }
   
   // REQUIRE CAMERA STARTED FIRST
@@ -529,7 +715,7 @@ async function registerFace() {
 
     const existing = await db.collection('users').doc(formData.userId).get();
     if (existing.exists) {
-      return showStatus('Employee ID already registered. Choose a different ID or contact an administrator.', 'error');
+      return showStatus('Service No. already registered. Choose a different Service No. or contact an administrator.', 'error');
     }
 
     const tempCanvas = document.createElement('canvas');
@@ -553,14 +739,14 @@ async function registerFace() {
     if (statusEl) {
       statusEl.innerHTML = '<div style="display:flex;flex-direction:column;gap:var(--space-2);text-align:center;">' +
         '<div style="display:flex;align-items:center;justify-content:center;gap:var(--space-2);font-weight:600;">' +
-        '<span style="color:var(--color-success);">✓</span> Employee Registered Successfully' +
+        '<span style="color:var(--color-success);">✓</span> Personnel Registered Successfully' +
         '</div>' +
         '<div style="font-size:var(--font-size-sm);color:var(--text-secondary);margin-top:var(--space-1);">' +
-        'ID: ' + formData.userId + ' | Name: ' + formData.name + ' | Dept: ' + formData.dept +
+        'Service No.: ' + formData.userId + ' | Name: ' + formData.name + ' | Dept: ' + formData.dept +
         '</div>' +
         '<div style="display:flex;gap:var(--space-2);justify-content:center;margin-top:var(--space-3);flex-wrap:wrap;">' +
         '<button onclick="clearRegisterForm()" class="btn btn-sm btn-outline">Register Another</button>' +
-        '<button onclick="goToEmployeesSection()" class="btn btn-sm btn-primary">View Employees</button>' +
+        '<button onclick="goToEmployeesSection()" class="btn btn-sm btn-primary">View Personnel</button>' +
         '</div>' +
         '</div>';
       statusEl.style.color = '#2E8B57';
@@ -724,7 +910,7 @@ async function scanFace() {
         if (distance < 0.6 && distance < minDistance) {
           match = { 
             id: user.id, 
-            name: user.name, 
+            name: getUserName(user) || '', 
             dept: user.dept, 
             appointment: user.appointment,
             faceImage: user.faceImage || null
@@ -804,6 +990,134 @@ async function detectSingleFace() {
   return detection ? [detection] : [];
 }
 
+// === COURSE PLACEMENT DATA ===
+const COURSE_DATA = {
+  'Senior Course': {
+    terms: ['Term 1', 'Term 2', 'Term 3', 'Term 4', 'Term 5'],
+    divisions: {
+      'Alpha Div': { syndicates: ['Syndicate 1', 'Syndicate 2', 'Syndicate 3', 'Syndicate 4', 'Syndicate 5', 'Syndicate 6', 'Syndicate 7', 'Syndicate 8'] },
+      'Bravo Div': { syndicates: ['Syndicate 1', 'Syndicate 2', 'Syndicate 3', 'Syndicate 4', 'Syndicate 5', 'Syndicate 6', 'Syndicate 7', 'Syndicate 8'] },
+      'Charlie Div': { syndicates: ['Syndicate 1', 'Syndicate 2', 'Syndicate 3', 'Syndicate 4', 'Syndicate 5', 'Syndicate 6', 'Syndicate 7', 'Syndicate 8'] },
+      'Delta Div': { syndicates: ['Syndicate 1', 'Syndicate 2', 'Syndicate 3', 'Syndicate 4', 'Syndicate 5', 'Syndicate 6', 'Syndicate 7', 'Syndicate 8'] }
+    }
+  },
+  'Junior Course': {
+    terms: ['Term 1', 'Term 2'],
+    divisions: {
+      'Alpha Div': { syndicates: ['Syndicate 1', 'Syndicate 2', 'Syndicate 3', 'Syndicate 4', 'Syndicate 5', 'Syndicate 6'] },
+      'Bravo Div': { syndicates: ['Syndicate 1', 'Syndicate 2', 'Syndicate 3', 'Syndicate 4', 'Syndicate 5', 'Syndicate 6'] },
+      'Charlie Div': { syndicates: ['Syndicate 1', 'Syndicate 2', 'Syndicate 3', 'Syndicate 4', 'Syndicate 5', 'Syndicate 6'] }
+    }
+  }
+};
+window.COURSE_DATA = COURSE_DATA;
+
+function populateSelect(selectEl, options, defaultText) {
+  if (!selectEl) return;
+  selectEl.innerHTML = '<option value="">' + defaultText + '</option>';
+  options.forEach(opt => {
+    const option = document.createElement('option');
+    option.value = opt;
+    option.textContent = opt;
+    selectEl.appendChild(option);
+  });
+  selectEl.disabled = false;
+}
+
+function setupCascadingDropdowns() {
+  const courseEl = document.getElementById('regCourse');
+  const termEl = document.getElementById('regTerm');
+  const divisionEl = document.getElementById('regDivision');
+  const syndicateEl = document.getElementById('regSyndicate');
+
+  if (!courseEl || !termEl || !divisionEl || !syndicateEl) return;
+
+  courseEl.addEventListener('change', () => {
+    const course = courseEl.value;
+
+    if (!course || !COURSE_DATA[course]) {
+      termEl.innerHTML = '<option value="">Select Term</option>';
+      termEl.disabled = true;
+      divisionEl.innerHTML = '<option value="">Select Division</option>';
+      divisionEl.disabled = true;
+      syndicateEl.innerHTML = '<option value="">Select Syndicate</option>';
+      syndicateEl.disabled = true;
+      return;
+    }
+
+    const data = COURSE_DATA[course];
+    populateSelect(termEl, data.terms, 'Select Term');
+    populateSelect(divisionEl, Object.keys(data.divisions), 'Select Division');
+    syndicateEl.innerHTML = '<option value="">Select Syndicate</option>';
+    syndicateEl.disabled = true;
+  });
+
+  divisionEl.addEventListener('change', () => {
+    const course = courseEl.value;
+    const division = divisionEl.value;
+
+    if (!course || !COURSE_DATA[course] || !division || !COURSE_DATA[course].divisions[division]) {
+      syndicateEl.innerHTML = '<option value="">Select Syndicate</option>';
+      syndicateEl.disabled = true;
+      return;
+    }
+
+    const syndicates = COURSE_DATA[course].divisions[division].syndicates;
+    populateSelect(syndicateEl, syndicates, 'Select Syndicate');
+  });
+}
+
+function validateCascadingFields(formData) {
+  const course = formData.course;
+  const term = formData.term;
+  const division = formData.division;
+  const syndicate = formData.syndicate;
+
+  if (!course) {
+    showStatus('Please select Course', 'error');
+    return false;
+  }
+
+  const courseData = COURSE_DATA[course];
+  if (!courseData) {
+    showStatus('Invalid Course selection', 'error');
+    return false;
+  }
+
+  if (!term) {
+    showStatus('Please select Term', 'error');
+    return false;
+  }
+
+  if (!courseData.terms.includes(term)) {
+    showStatus('Invalid Term for selected Course', 'error');
+    return false;
+  }
+
+  if (!division) {
+    showStatus('Please select Division', 'error');
+    return false;
+  }
+
+  if (!courseData.divisions[division]) {
+    showStatus('Invalid Division for selected Course', 'error');
+    return false;
+  }
+
+  if (!syndicate) {
+    showStatus('Please select Syndicate', 'error');
+    return false;
+  }
+
+  const validSyndicates = courseData.divisions[division].syndicates;
+  if (!validSyndicates.includes(syndicate)) {
+    showStatus('Invalid Syndicate for selected Course and Division', 'error');
+    return false;
+  }
+
+  return true;
+}
+
 // MAIN INIT
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('Face Attendance System Starting...');
@@ -834,7 +1148,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Preload users cache for faster face matching
     getCachedUsers().catch(() => {});
 
-    auth.onAuthStateChanged(user => {
+    auth.onAuthStateChanged(async user => {
     isAdminSignedIn = !!user;
     const signOutBtn = document.getElementById('adminSignOutBtn');
     const panel = document.getElementById('attendanceAdminPanel');
@@ -844,11 +1158,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('Auth state:', user ? user.email : 'signed out');
 
     if (user) {
-      showStatus('Admin signed in ✓ Panel ready', 'success');
+      const role = await getCurrentUserRole();
+      console.log('User role:', role);
+
+      if (role === 'divisionAdmin') {
+        const scope = await getDivisionAdminScope();
+        console.log('Division Admin scope:', scope);
+        showStatus('Division Admin signed in - Restricted access', 'success');
+        if (adminStatus) adminStatus.textContent = 'Division Admin - ' + (scope ? scope.division : 'Restricted');
+      } else {
+        showStatus('Admin signed in ✓ Panel ready', 'success');
+        if (adminStatus) adminStatus.textContent = 'Signed in - Dashboard active';
+      }
+
       if (signOutBtn) signOutBtn.style.display = 'inline-block';
       if (panel) panel.style.display = 'block';
       if (regBtn) regBtn.disabled = false;
-      if (adminStatus) adminStatus.textContent = 'Signed in - Dashboard active';
       loadAttendanceRecords();
     } else {
       showStatus('Not signed in - Login required', 'info');
@@ -918,4 +1243,7 @@ refreshBtn: () => {
   }
   
   console.log('500m Office Restriction ACTIVE');
+
+  // Cascading dropdowns for course placement
+  setupCascadingDropdowns();
 });
