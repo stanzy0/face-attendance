@@ -8,17 +8,27 @@ const projectId = cleanEnv(process.env.FIREBASE_PROJECT_ID);
 const clientEmail = cleanEnv(process.env.FIREBASE_CLIENT_EMAIL);
 const privateKey = cleanEnv(process.env.FIREBASE_PRIVATE_KEY);
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId,
-      clientEmail,
-      privateKey
-    })
-  });
-}
+// Initialised once at module load. A missing or malformed service account
+// throws here, which Vercel reports only as FUNCTION_INVOCATION_FAILED, so the
+// failure is captured and surfaced per request instead.
+let FIREBASE_INIT_ERROR = null;
+let db = null;
 
-const db = admin.firestore();
+try {
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId,
+        clientEmail,
+        privateKey
+      })
+    });
+  }
+  db = admin.firestore();
+} catch (e) {
+  FIREBASE_INIT_ERROR = (e && e.message) || String(e);
+  console.error('[BioTrack] Firebase Admin init failed:', FIREBASE_INIT_ERROR);
+}
 
 const ALLOWED_DEPARTMENTS = [
   'Department of Land Warfare',
@@ -76,6 +86,14 @@ function isStaffManager(role) {
 
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
+
+  if (!db) {
+    return res.status(500).json({
+      error: 'Server not configured: Firebase Admin credentials are missing or invalid.',
+      detail: FIREBASE_INIT_ERROR,
+      hint: 'Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in the Vercel project environment variables, then redeploy.'
+    });
+  }
 
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
