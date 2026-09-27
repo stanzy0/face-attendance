@@ -11,12 +11,17 @@
     customDateRange: null,
     attendanceData: [],
     usersData: [],
+    staffUsersData: [],
+    staffData: [],
+    // True for so1 / chiefClerk: Students are read-only for these roles.
+    studentReadOnly: false,
      realtimeUnsubscribe: null,
     unsubscribeUsers: null,
     unsubscribeAnalyticsAttendance: null,
     analyticsAttendanceData: [],
     isLoading: false,
     currentProfileEmpId: null,
+    currentStaffId: null,
     initialized: false,
     dashboardEl: null
   };
@@ -32,12 +37,406 @@
      return window.auth || null;
    }
 
-   function getUserName(data) {
-     return data?.["name "] ?? data?.name ?? null;
-   }
+ function getUserName(data) {
+      return data?.["name "] ?? data?.name ?? null;
+    }
 
-   // ============================================
-   // REAL-TIME LISTENERS
+    // ============================================
+    // POPULATION HELPERS (students vs staff)
+    // Centralised so every section classifies records the same way.
+    // Staff are identified by personType === 'staff' (written by api/admin/staff.js).
+    // Students are everything that is not staff and not an admin account.
+    // Existing student documents are never modified; no personType is required.
+    // ============================================
+    // Roles that are never part of the student population.
+    // Single source of truth for the admin dashboard.
+    var NON_STUDENT_ROLES = ['superAdmin', 'divisionAdmin', 'so1', 'chiefClerk', 'staff'];
+
+    function getUserRoleValue(user) {
+      if (!user) return null;
+      return user['role '] ?? user.role ?? null;
+    }
+
+    function isStaffUser(user) {
+      return !!user && user.personType === 'staff';
+    }
+
+    function isNonStudentRole(role) {
+      return !!role && NON_STUDENT_ROLES.indexOf(role) !== -1;
+    }
+
+    function isStudentUser(user) {
+      if (!user) return false;
+      if (isStaffUser(user)) return false;
+      return !isNonStudentRole(getUserRoleValue(user));
+    }
+
+    function splitUsersByPopulation(users) {
+      var students = [];
+      var staff = [];
+      (Array.isArray(users) ? users : []).forEach(function(user) {
+        if (isStaffUser(user)) staff.push(user);
+        else if (isStudentUser(user)) students.push(user);
+      });
+      return { students: students, staff: staff };
+    }
+
+    function getUserIdentifier(user) {
+      if (!user) return null;
+      var id = user.userId || user.id || null;
+      return id == null ? null : String(id);
+    }
+
+    // Latest scoped users snapshot, split into both populations.
+    // Populated by the realtime listener and by the one-shot loaders so that
+    // no extra Firestore reads are introduced.
+    var usersSnapshot = { students: [], staff: [] };
+
+    function setUsersSnapshot(rawUsers) {
+      var split = splitUsersByPopulation(rawUsers);
+      usersSnapshot.students = split.students;
+      usersSnapshot.staff = split.staff;
+      return usersSnapshot;
+    }
+
+    // Attendance records stay in one collection; they are attributed to a
+    // population through the owning userId.
+    function splitRecordsByPopulation(records) {
+      var staffIds = new Set();
+      usersSnapshot.staff.forEach(function(user) {
+        var id = getUserIdentifier(user);
+        if (id != null) staffIds.add(id);
+      });
+
+      var students = [];
+      var staff = [];
+      (Array.isArray(records) ? records : []).forEach(function(record) {
+        if (record && record.userId != null && staffIds.has(String(record.userId))) {
+          staff.push(record);
+        } else {
+          students.push(record);
+        }
+      });
+      return { students: students, staff: staff };
+    }
+
+    async function getAuthToken() {
+      const auth = getAuth();
+      if (!auth || !auth.currentUser) return null;
+      return await auth.currentUser.getIdToken();
+    }
+
+    async function apiListStudents(options = {}) {
+      const token = await getAuthToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const params = new URLSearchParams();
+      if (options.searchTerm) params.append('searchTerm', options.searchTerm);
+      if (options.termFilter) params.append('termFilter', options.termFilter);
+      if (options.syndicateFilter) params.append('syndicateFilter', options.syndicateFilter);
+      if (options.statusFilter) params.append('statusFilter', options.statusFilter);
+
+      const response = await fetch('/api/admin/students?' + params.toString(), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        }
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to list students');
+      }
+      return result.students || [];
+    }
+
+    async function apiGetStudent(uid) {
+      const token = await getAuthToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch('/api/admin/students?uid=' + encodeURIComponent(uid), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        }
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to get student');
+      }
+      return result;
+    }
+
+    async function apiUpdateStudent(uid, data) {
+      const token = await getAuthToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch('/api/admin/students?uid=' + encodeURIComponent(uid), {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify(data)
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update student');
+      }
+      return result;
+    }
+
+    async function apiDeleteStudent(uid) {
+      const token = await getAuthToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch('/api/admin/students?uid=' + encodeURIComponent(uid), {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        }
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to delete student');
+      }
+      return result;
+    }
+
+    function getDivisionAdminScopeInfo() {
+      const role = window.getCurrentUserRole ? window.getCurrentUserRole() : Promise.resolve(null);
+      return role;
+    }
+
+    async function renderDivisionAdminScopeIndicator() {
+      const role = await getDivisionAdminScopeInfo();
+      if (role !== 'divisionAdmin') return;
+
+      const scope = await window.getDivisionAdminScope?.();
+      if (!scope || !scope.department || !scope.course || !scope.division) return;
+
+      const indicatorContainer = document.getElementById('divisionAdminScopeIndicator');
+      if (indicatorContainer) {
+        indicatorContainer.innerHTML = '<div class="scope-indicator-badge">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;margin-right:6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>' +
+          '<span>' + escapeHtml(scope.department) + ' / ' + escapeHtml(scope.course) + ' / ' + escapeHtml(scope.division) + '</span>' +
+          '</div>';
+        indicatorContainer.style.display = 'flex';
+      }
+    }
+
+    window.renderDivisionAdminScopeIndicator = renderDivisionAdminScopeIndicator;
+
+    async function getAuthToken() {
+      const auth = getAuth();
+      if (!auth || !auth.currentUser) return null;
+      return await auth.currentUser.getIdToken();
+    }
+
+    async function apiGetReports(type, options = {}) {
+      const token = await getAuthToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const params = new URLSearchParams();
+      params.append('type', type);
+      if (options.startDate) params.append('startDate', options.startDate);
+      if (options.endDate) params.append('endDate', options.endDate);
+      if (options.userId) params.append('userId', options.userId);
+      if (options.term) params.append('term', options.term);
+      if (options.syndicate) params.append('syndicate', options.syndicate);
+      if (options.status) params.append('status', options.status);
+      if (options.location) params.append('location', options.location);
+      if (options.department) params.append('department', options.department);
+      if (options.course) params.append('course', options.course);
+      if (options.division) params.append('division', options.division);
+
+      const response = await fetch('/api/admin/reports?' + params.toString(), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        }
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to generate report');
+      }
+      return result;
+    }
+
+    window.apiGetReports = apiGetReports;
+
+    // ============================================
+    // STAFF API FUNCTIONS
+    // ============================================
+    // Builds a diagnosable error for failed Vercel serverless API calls.
+    // Distinguishes "serverless function never ran" (404 with no JSON body)
+    // from "handler ran and rejected the request" (JSON error body).
+    function buildApiError(action, url, response, rawBody) {
+      const trimmed = (rawBody || '').trim();
+      const serverHeader = response.headers.get('server') || '';
+      const parts = ['Staff API error while trying to ' + action + ': HTTP ' + response.status];
+
+      let apiMessage = '';
+      if (trimmed) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed && parsed.error) apiMessage = parsed.error;
+        } catch (_) {}
+      }
+
+      if (apiMessage) {
+        parts.push('Server message: ' + apiMessage);
+      } else if (!trimmed) {
+        parts.push('Empty response body.');
+      } else {
+        parts.push('Response body: ' + trimmed.slice(0, 300));
+      }
+
+      if (response.status === 404) {
+        parts.push(
+          'A 404 with an empty body means the serverless function was never invoked. ' +
+          'Serve the app with "vercel dev" (not "http-server" or "npx serve"), ' +
+          'since only Vercel exposes the /api directory.'
+        );
+      }
+      if (response.status === 401) {
+        parts.push('The auth token was rejected. Sign out and sign in again, then retry.');
+      }
+      if (response.status === 403) {
+        parts.push('This account is not permitted to manage staff.');
+      }
+      if (serverHeader && serverHeader.toLowerCase().indexOf('vercel') === -1) {
+        parts.push('Responding server: ' + serverHeader + ' (expected Vercel).');
+      }
+
+      parts.push('Request: GET ' + url);
+      return parts.join(' | ');
+    }
+
+    async function apiListStaff() {
+      const token = await getAuthToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch('/api/admin/staff', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        }
+      });
+
+      const rawBody = await response.text();
+
+      if (!response.ok) {
+        throw new Error(buildApiError('list staff', '/api/admin/staff', response, rawBody));
+      }
+
+      let result;
+      try {
+        result = rawBody ? JSON.parse(rawBody) : {};
+      } catch (e) {
+        throw new Error('Staff API returned HTTP ' + response.status + ' with a non-JSON body: ' + rawBody);
+      }
+      return result.staff || [];
+    }
+
+    async function apiGetStaff(uid) {
+      const token = await getAuthToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch('/api/admin/staff?uid=' + encodeURIComponent(uid), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        }
+      });
+
+      if (!response.ok) {
+        let errMsg = 'Failed to get staff';
+        try { const r = await response.json(); if (r && r.error) errMsg = r.error; } catch (_) {}
+        throw new Error(errMsg);
+      }
+      return await response.json();
+    }
+
+    async function apiCreateStaff(data) {
+      const token = await getAuthToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch('/api/admin/staff', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (!response.ok) {
+        let errMsg = 'Failed to create staff';
+        try { const r = await response.json(); if (r && r.error) errMsg = r.error; } catch (_) {}
+        throw new Error(errMsg);
+      }
+      return await response.json();
+    }
+
+    async function apiUpdateStaff(uid, data) {
+      const token = await getAuthToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch('/api/admin/staff?uid=' + encodeURIComponent(uid), {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (!response.ok) {
+        let errMsg = 'Failed to update staff';
+        try { const r = await response.json(); if (r && r.error) errMsg = r.error; } catch (_) {}
+        throw new Error(errMsg);
+      }
+      return await response.json();
+    }
+
+    async function apiDeleteStaff(uid) {
+      const token = await getAuthToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch('/api/admin/staff?uid=' + encodeURIComponent(uid), {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        }
+      });
+
+      if (!response.ok) {
+        let errMsg = 'Failed to delete staff';
+        try { const r = await response.json(); if (r && r.error) errMsg = r.error; } catch (_) {}
+        throw new Error(errMsg);
+      }
+      return await response.json();
+    }
+
+    window.apiListStaff = apiListStaff;
+    window.apiCreateStaff = apiCreateStaff;
+    window.apiUpdateStaff = apiUpdateStaff;
+    window.apiDeleteStaff = apiDeleteStaff;
+
+    // ============================================
+    // REAL-TIME LISTENERS
    // ============================================
     function unsubscribeAllRealTime() {
     if (state.unsubscribeUsers) {
@@ -81,11 +480,16 @@
         var users = snapshot.docs.map(function(doc) {
           return { id: doc.id, ...doc.data() };
         });
-        var studentUsers = users.filter(function(u) {
-          var userRole = u["role "] ?? u.role ?? null;
-          return userRole !== 'superAdmin' && userRole !== 'divisionAdmin';
-        });
+
+        // Single listener serves both populations: staff are separated from
+        // students here so Student and Staff KPIs update in realtime
+        // without adding a second Firestore listener.
+        var split = setUsersSnapshot(users);
+        var studentUsers = split.students;
+        var staffUsers = split.staff;
+
         state.usersData = studentUsers;
+        state.staffUsersData = staffUsers;
 
         // Update dashboard if visible
         if (isDashboardSectionVisible()) {
@@ -126,28 +530,40 @@
     var db = getDb();
     if (!db) return;
 
-    // Query attendance for current analytics period
-    state.unsubscribeAnalyticsAttendance = db.collection('attendance')
-      .where('date', '>=', formatDate(startDate))
-      .where('date', '<=', formatDate(endDate))
-      .onSnapshot(function(snapshot) {
-        var records = snapshot.docs.map(function(doc) {
-          return { id: doc.id, ...doc.data() };
-        });
-        records.sort(function(a, b) {
-          return (b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : 0) - (a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : 0);
-        });
-        analyticsState.attendance = records;
-        state.analyticsAttendanceData = records;
-
-        // Update analytics if visible
-        if (isAnalyticsSectionVisible()) {
-          renderAnalytics();
+    (async function() {
+      try {
+        var role = await window.getCurrentUserRole?.();
+        var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
+        var query = db.collection('attendance')
+          .where('date', '>=', formatDate(startDate))
+          .where('date', '<=', formatDate(endDate));
+        if (scope) {
+          query = query.where('dept', '==', scope.department)
+                       .where('course', '==', scope.course)
+                       .where('division', '==', scope.division);
         }
-      }, function(error) {
-        console.error('Realtime analytics attendance listener error:', error);
-      });
-  }
+
+        state.unsubscribeAnalyticsAttendance = query.onSnapshot(function(snapshot) {
+          var records = snapshot.docs.map(function(doc) {
+            return { id: doc.id, ...doc.data() };
+          });
+          records.sort(function(a, b) {
+            return (b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : 0) - (a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : 0);
+          });
+          analyticsState.attendance = setAnalyticsAttendanceRecords(records);
+          state.analyticsAttendanceData = records;
+
+          if (isAnalyticsSectionVisible()) {
+            renderAnalytics();
+          }
+        }, function(error) {
+          console.error('Realtime analytics attendance listener error:', error);
+        });
+      } catch (e) {
+        console.error('Analytics attendance scoping failed:', e);
+      }
+    })();
+   }
 
   function isAnalyticsSectionVisible() {
     var el = typeof document !== 'undefined' ? document.getElementById('section-analytics') : null;
@@ -341,7 +757,8 @@
       '    </select>',
       '  </div>',
       '</div>',
-      '<div id="dashKpiCards" class="kpi-grid"></div>',
+      '<div class="overview-group" id="dashStudentKpis"></div>',
+      '<div class="overview-group" id="dashStaffKpis"></div>',
       '<div class="charts-grid">',
       '  <div class="chart-card">',
       '    <h5 class="chart-title">Attendance Trend</h5>',
@@ -379,30 +796,36 @@
   // ============================================
   // FIRESTORE QUERIES
   // ============================================
-  async function loadUsers() {
+  // Returns every user document visible to the current administrator,
+  // keeping the existing Division Admin Department/Course/Division query scope.
+  async function fetchScopedUsers() {
     const db = getDb();
     if (!db) return [];
+    var role = await window.getCurrentUserRole?.();
+    var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
+    var query = db.collection('users');
+    if (scope) {
+      query = query.where('dept', '==', scope.department)
+                   .where('course', '==', scope.course)
+                   .where('division', '==', scope.division);
+    }
+    const snapshot = await query.get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  }
+
+  // Students only. Preserves the previous behaviour of excluding
+  // superAdmin and divisionAdmin, and additionally excludes staff.
+  async function loadUsers() {
     try {
-      var role = await window.getCurrentUserRole?.();
-      var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
-      var query = db.collection('users');
-      if (scope) {
-        query = query.where('dept', '==', scope.department)
-                     .where('course', '==', scope.course)
-                     .where('division', '==', scope.division);
-      }
-      const snapshot = await query.get();
-      return snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(function(u) {
-          var userRole = u["role "] ?? u.role ?? null;
-          return userRole !== 'superAdmin' && userRole !== 'divisionAdmin';
-        });
+      return setUsersSnapshot(await fetchScopedUsers()).students;
     } catch (e) {
       console.error('Dashboard: Failed to load users', e);
       return [];
     }
   }
+
+  // Staff members come from the same scoped read via usersSnapshot.staff,
+  // so no additional Firestore query is needed for the staff population.
 
   async function loadAttendanceForDate(date) {
     const db = getDb();
@@ -612,6 +1035,46 @@
     return Math.round((present / total) * 100);
   }
 
+  // ============================================
+  // POPULATION KPIs (students and staff kept separate)
+  // Present = members of this population with an attendance record in the
+  // selected period. Rate is 0 when the population is empty (never NaN).
+  // ============================================
+  function calculatePopulationKpis(records, users, period) {
+    var safeRecords = Array.isArray(records) ? records : [];
+    var safeUsers = Array.isArray(users) ? users : [];
+
+    var range = getDateRange(period, state.customDateRange);
+    var startDateStr = formatDate(range.start);
+    var endDateStr = formatDate(range.end);
+
+    var populationIds = new Set();
+    safeUsers.forEach(function(user) {
+      var id = getUserIdentifier(user);
+      if (id != null) populationIds.add(id);
+    });
+
+    var presentIds = new Set();
+    safeRecords.forEach(function(record) {
+      if (!record || record.userId == null) return;
+      if (record.date < startDateStr || record.date > endDateStr) return;
+      if (populationIds.has(String(record.userId))) {
+        presentIds.add(String(record.userId));
+      }
+    });
+
+    var total = safeUsers.length;
+    var present = presentIds.size;
+    var absent = Math.max(0, total - present);
+
+    return {
+      total: total,
+      present: present,
+      absent: absent,
+      rate: calculateAttendanceRate(present, total)
+    };
+  }
+
   function calculateLocationAnalytics(records) {
     const safeRecords = Array.isArray(records) ? records : [];
     let inside = 0, outside = 0, blocked = 0;
@@ -668,30 +1131,74 @@
       '</div>';
   }
 
-  function renderKpiCards(kpis, period) {
-    const container = document.getElementById('dashKpiCards');
+  // ============================================
+  // OVERVIEW: STUDENTS and STAFF shown as separate, clearly labelled groups.
+  // No combined "Total People" figure is produced.
+  // ============================================
+  function renderOverviewPopulationGroup(containerId, heading, headingHint, kpis, iconSet) {
+    var container = document.getElementById(containerId);
     if (!container) return;
 
-    var labelSuffix = period === 'today' ? '' : ' (' + period + ')';
     var cards = [
-      { icon: '👥', label: 'Total Staff', value: kpis.totalStaff, color: 'var(--text-primary)' },
-      { icon: '✅', label: 'Present' + labelSuffix, value: kpis.present, color: '#2E8B57' },
-      { icon: '❌', label: 'Absent' + labelSuffix, value: kpis.absent, color: '#ff6b6b' },
-      { icon: '⏰', label: 'Late' + labelSuffix, value: kpis.late, color: '#D4A017' },
-      { icon: '🚫', label: 'Blocked' + labelSuffix, value: kpis.blocked, color: '#8B1E1E' },
-      { icon: '🔍', label: 'Verifications' + labelSuffix, value: kpis.verifications, color: '#C8A646' }
+      { icon: iconSet.total, label: heading + ' — Total', value: kpis.total, color: 'var(--text-primary)' },
+      { icon: iconSet.present, label: heading + ' — Present', value: kpis.present, color: '#2E8B57' },
+      { icon: iconSet.absent, label: heading + ' — Absent', value: kpis.absent, color: '#ff6b6b' },
+      { icon: iconSet.rate, label: heading + ' — Attendance Rate', value: kpis.rate + '%', color: 'var(--color-accent, #C8A646)' }
     ];
 
-    var html = '';
+    var html = '<div class="overview-group-header">' +
+      '<h3 class="overview-group-title">' + escapeHtml(heading) + '</h3>' +
+      (headingHint ? '<span class="overview-group-hint">' + escapeHtml(headingHint) + '</span>' : '') +
+      '</div>' +
+      '<div class="kpi-grid">';
+
     cards.forEach(function(card) {
       html += '<div class="kpi-card">' +
         '<div class="kpi-icon">' + escapeHtml(card.icon) + '</div>' +
-        '<div class="kpi-value" style="color:' + card.color + ';">' + card.value + '</div>' +
+        '<div class="kpi-value" style="color:' + card.color + ';">' + escapeHtml(String(card.value)) + '</div>' +
         '<div class="kpi-label">' + escapeHtml(card.label) + '</div>' +
         '</div>';
     });
 
+    html += '</div>';
     container.innerHTML = html;
+  }
+
+  function renderOverviewRestricted(containerId, heading) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '<div class="overview-group-header">' +
+      '<h3 class="overview-group-title">' + escapeHtml(heading) + '</h3>' +
+      '</div>' +
+      '<div class="overview-restricted-note">Staff statistics are not available to your account role.</div>';
+  }
+
+  var OVERVIEW_STUDENT_ICONS = { total: '👥', present: '✅', absent: '❌', rate: '📊' };
+  var OVERVIEW_STAFF_ICONS = { total: '🧑‍💼', present: '✅', absent: '❌', rate: '📈' };
+
+  function renderOverviewKpis(period) {
+    var records = state.attendanceData || [];
+    var split = splitRecordsByPopulation(records);
+
+    var studentKpis = calculatePopulationKpis(split.students, state.usersData || [], period);
+    renderOverviewPopulationGroup('dashStudentKpis', 'Students', 'Student attendance overview', studentKpis, OVERVIEW_STUDENT_ICONS);
+
+    // Division Admin must not gain unrestricted staff statistics.
+    renderOverviewStaffKpis(split.staff, period);
+  }
+
+  async function renderOverviewStaffKpis(staffRecords, period) {
+    var container = document.getElementById('dashStaffKpis');
+    if (!container) return;
+
+    var role = await window.getCurrentUserRole?.();
+    if (role === 'divisionAdmin') {
+      renderOverviewRestricted('dashStaffKpis', 'Staff');
+      return;
+    }
+
+    var staffKpis = calculatePopulationKpis(staffRecords, state.staffUsersData || [], period);
+    renderOverviewPopulationGroup('dashStaffKpis', 'Staff', 'Staff attendance overview', staffKpis, OVERVIEW_STAFF_ICONS);
   }
 
   function renderTrendChart(containerId, data) {
@@ -1046,7 +1553,7 @@
     var rate = calculateAttendanceRate(kpis.present, kpis.totalStaff);
     var locationAnalytics = calculateLocationAnalytics(records);
 
-    renderKpiCards(kpis, period);
+    renderOverviewKpis(period);
     renderTrendChart('dashTrendChart', trendData);
     renderDepartmentChart('dashDeptChart', deptData);
     renderRateRing('dashRateRing', rate);
@@ -1072,7 +1579,7 @@
     var db = getDb();
     if (!db) {
       state.isLoading = false;
-      var kpiContainer = document.getElementById('dashKpiCards');
+      var kpiContainer = document.getElementById('dashStudentKpis');
       if (kpiContainer) {
         kpiContainer.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px;">Connecting to Firebase...</div>';
       }
@@ -1081,19 +1588,24 @@
 
     unsubscribeFromAttendance();
 
-    var kpiContainer = document.getElementById('dashKpiCards');
+    var kpiContainer = document.getElementById('dashStudentKpis');
+    var staffKpiContainer = document.getElementById('dashStaffKpis');
     var tableContainer = document.getElementById('dashAttendanceTable');
     var trendContainer = document.getElementById('dashTrendChart');
     var deptContainer = document.getElementById('dashDeptChart');
 
     if (kpiContainer) kpiContainer.innerHTML = renderSkeletonKpis();
+    if (staffKpiContainer) staffKpiContainer.innerHTML = renderSkeletonKpis();
     if (tableContainer) tableContainer.innerHTML = renderSkeletonTable();
     if (trendContainer) trendContainer.innerHTML = renderSkeletonCharts();
     if (deptContainer) deptContainer.innerHTML = '<div class="skeleton" style="height:200px;"></div>';
 
      try {
-      // Initial one-time load for users, then set up real-time listener
-      state.usersData = await loadUsers();
+      // Initial one-time load for users, then set up real-time listener.
+      // One scoped read populates both populations via the shared snapshot.
+      var usersSplit = setUsersSnapshot(await fetchScopedUsers());
+      state.usersData = usersSplit.students;
+      state.staffUsersData = usersSplit.staff;
       subscribeToUsersRealtime();
 
       if (state.currentPeriod === 'today') {
@@ -1109,7 +1621,7 @@
       updateDashboard();
     } catch (e) {
       console.error('Dashboard: Failed to load data', e);
-      if (kpiContainer) showError('dashKpiCards', 'Failed to load dashboard data. Please refresh.');
+      if (kpiContainer) showError('dashStudentKpis', 'Failed to load dashboard data. Please refresh.');
     } finally {
       state.isLoading = false;
     }
@@ -1209,14 +1721,14 @@
     var endVal = endInput.value;
 
     if (!startVal || !endVal) {
-      var kpiContainer = document.getElementById('dashKpiCards');
-      if (kpiContainer) showError('dashKpiCards', 'Please select both start and end dates.');
+      var kpiContainer = document.getElementById('dashStudentKpis');
+      if (kpiContainer) showError('dashStudentKpis', 'Please select both start and end dates.');
       return;
     }
 
     if (new Date(startVal) > new Date(endVal)) {
-      var kpiContainer = document.getElementById('dashKpiCards');
-      if (kpiContainer) showError('dashKpiCards', 'Start date must be before end date.');
+      var kpiContainer = document.getElementById('dashStudentKpis');
+      if (kpiContainer) showError('dashStudentKpis', 'Start date must be before end date.');
       return;
     }
 
@@ -1264,12 +1776,48 @@
       divisionAccountsNav.style.display = role === 'superAdmin' ? '' : 'none';
     }
 
+    var staffNav = document.querySelectorAll('.admin-nav-staff-manager-only');
+    if (staffNav) {
+      staffNav.forEach(function(el) {
+        el.style.display = (role === 'superAdmin' || role === 'so1' || role === 'chiefClerk') ? '' : 'none';
+      });
+    }
+
+    // so1 / chiefClerk keep read-only access to Students: student write
+    // controls are removed. The student APIs independently reject these roles.
+    var studentReadOnly = (role === 'so1' || role === 'chiefClerk');
+    state.studentReadOnly = studentReadOnly;
+    var regNavEl = document.querySelector('.admin-nav-item[data-section="register"]');
+    var regFormBtn = document.getElementById('regBtn');
+    console.log('[ROLE DEBUG] current role:', role);
+    console.log('[ROLE DEBUG] studentReadOnly:', studentReadOnly);
+    console.log('[ROLE DEBUG] regBtn exists:', !!regFormBtn);
+    console.log('[ROLE DEBUG] register nav exists:', !!regNavEl);
+    console.log('[ROLE DEBUG] regBtn display before:', regFormBtn ? regFormBtn.style.display : '(n/a)');
+    console.log('[ROLE DEBUG] register nav display before:', regNavEl ? regNavEl.style.display : '(n/a)');
+    if (studentReadOnly) {
+      ['regBtn', 'profileDeleteBtn'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+      // The sidebar entry is a nav item, not the #regBtn submit button, so it
+      // must be matched by its section key.
+      var registerNav = document.querySelectorAll('.admin-nav-item[data-section="register"]');
+      registerNav.forEach(function(el) { el.style.display = 'none'; });
+    }
+    console.log('[ROLE DEBUG] regBtn display after:', regFormBtn ? regFormBtn.style.display : '(n/a)');
+    console.log('[ROLE DEBUG] register nav display after:', regNavEl ? regNavEl.style.display : '(n/a)');
+
     var adminRoleEl = document.querySelector('.admin-admin-role');
     if (adminRoleEl) {
       if (role === 'superAdmin') {
         adminRoleEl.textContent = 'Super Admin';
       } else if (role === 'divisionAdmin') {
         adminRoleEl.textContent = 'Division Admin';
+      } else if (role === 'so1') {
+        adminRoleEl.textContent = 'SO1';
+      } else if (role === 'chiefClerk') {
+        adminRoleEl.textContent = 'Chief Clerk';
       } else {
         adminRoleEl.textContent = 'Admin';
       }
@@ -1342,7 +1890,8 @@
       analytics: 'Analytics',
       attendance: 'Attendance',
       employees: 'Students',
-      register: 'Register Employee',
+      register: 'Register Student',
+      staff: 'Staff',
       reports: 'Reports'
     };
 
@@ -1352,6 +1901,7 @@
       attendance: 'Attendance records and management',
       employees: 'Registered students',
       register: 'Register new students with biometric data',
+      staff: 'Staff / Employee Management',
       reports: 'Export attendance reports and data'
     };
 
@@ -1390,6 +1940,8 @@
           loadAttendanceSection();
         } else if (sectionId === 'employees') {
           loadEmployeesSection();
+        } else if (sectionId === 'staff') {
+          loadStaffSection();
         } else if (sectionId === 'reports') {
           loadReportsSection();
         }
@@ -1443,7 +1995,9 @@
   var attendanceState = {
     records: [],
     users: [],
+    staffUsers: [],
     filters: {
+      population: 'students',
       search: '',
       department: '',
       status: '',
@@ -1457,6 +2011,31 @@
     isLoading: false,
     initialized: false
   };
+
+  // Population for the Attendance section. Records stay in the single
+  // `attendance` collection and are attributed to a population via userId.
+  function getAttendancePopulationUsers() {
+    return attendanceState.filters.population === 'staff'
+      ? (attendanceState.staffUsers || [])
+      : (attendanceState.users || []);
+  }
+
+  // Applied FIRST, before search/date/status/location, so a record from the
+  // other population can never reach the table, the KPIs or an export.
+  function filterAttendanceRecordsByPopulation(records, population) {
+    var wantStaff = (population || attendanceState.filters.population) === 'staff';
+    var staffUsers = attendanceState.staffUsers || [];
+    var staffIds = new Set();
+    staffUsers.forEach(function(user) {
+      var id = getUserIdentifier(user);
+      if (id != null) staffIds.add(id);
+    });
+
+    return (Array.isArray(records) ? records : []).filter(function(record) {
+      var isStaffRecord = record && record.userId != null && staffIds.has(String(record.userId));
+      return wantStaff ? isStaffRecord : !isStaffRecord;
+    });
+  }
 
   function getAttendanceDateRange(period, customRange) {
     var now = new Date();
@@ -1509,32 +2088,41 @@
     return labels[period] || 'Today';
   }
 
-  function subscribeToAttendanceRecords(dateStr) {
-    var db = getDb();
-    if (!db) return null;
-    unsubscribeFromAttendanceRecords();
+   function subscribeToAttendanceRecords(dateStr) {
+     var db = getDb();
+     if (!db) return null;
+     unsubscribeFromAttendanceRecords();
 
-    try {
-      var unsubscribe = db.collection('attendance')
-        .where('date', '==', dateStr)
-        .onSnapshot(function(snapshot) {
-          var docs = snapshot.docs.map(function(doc) { return { id: doc.id, ...doc.data() }; });
-          docs.sort(function(a, b) {
-            return (b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : 0) - (a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : 0);
-          });
-          attendanceState.records = docs;
-          refreshAttendanceView();
-        }, function(error) {
-          console.error('Attendance: Realtime listener error', error);
-        });
+     (async function() {
+       try {
+         var role = await window.getCurrentUserRole?.();
+         var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
+         var query = db.collection('attendance').where('date', '==', dateStr);
+         if (scope) {
+           query = query.where('dept', '==', scope.department)
+                        .where('course', '==', scope.course)
+                        .where('division', '==', scope.division);
+         }
 
-      attendanceState.realtimeUnsubscribe = unsubscribe;
-      return unsubscribe;
-    } catch (e) {
-      console.error('Attendance: Failed to subscribe', e);
+         var unsubscribe = query.onSnapshot(function(snapshot) {
+           var docs = snapshot.docs.map(function(doc) { return { id: doc.id, ...doc.data() }; });
+           docs.sort(function(a, b) {
+             return (b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : 0) - (a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : 0);
+           });
+           attendanceState.records = docs;
+           refreshAttendanceView();
+         }, function(error) {
+           console.error('Attendance: Realtime listener error', error);
+         });
+
+         attendanceState.realtimeUnsubscribe = unsubscribe;
+       } catch (e) {
+         console.error('Attendance: Failed to subscribe', e);
+       }
+     })();
+
       return null;
     }
-  }
 
   function unsubscribeFromAttendanceRecords() {
     if (attendanceState.realtimeUnsubscribe) {
@@ -1564,7 +2152,10 @@
     if (kpiContainer) kpiContainer.innerHTML = Array(5).fill('<div class="skeleton-kpi"></div>').join('');
 
     try {
-      attendanceState.users = await loadUsers();
+      // One scoped read feeds both attendance populations.
+      var attendanceUsersSplit = setUsersSnapshot(await fetchScopedUsers());
+      attendanceState.users = attendanceUsersSplit.students;
+      attendanceState.staffUsers = attendanceUsersSplit.staff;
 
       var range = getAttendanceDateRange(attendanceState.period, attendanceState.customRange);
       var startDateStr = formatDate(range.start);
@@ -1581,7 +2172,7 @@
         unsubscribeFromAttendanceRecords();
       }
 
-      populateAttendanceDeptFilter(attendanceState.users);
+      populateAttendanceDeptFilter(getAttendancePopulationUsers());
       renderAttendancePeriodSelect();
       updateAttendanceDateIndicator();
       refreshAttendanceView();
@@ -1705,8 +2296,11 @@
     var container = document.getElementById('attendanceKpiCards');
     if (!container) return;
 
+    // Denominator label follows the selected population.
+    var populationLabel = attendanceState.filters.population === 'staff' ? 'Total Staff' : 'Total Students';
+
     var cards = [
-      { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', label: 'Total Students', value: kpis.totalStaff, color: 'var(--text-primary)' },
+      { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', label: populationLabel, value: kpis.totalStaff, color: 'var(--text-primary)' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11h-4l-2-4h-2l-2 4H2"/>', label: 'Present', value: kpis.present, color: '#2E8B57' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 16 12 12 12 8"/><line x1="12" y1="12" x2="12.01" y2="12"/></svg>', label: 'Late', value: kpis.late, color: '#D4A017' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>', label: 'Absent', value: kpis.absent, color: '#A52A2A' },
@@ -1800,8 +2394,9 @@
     var container = document.getElementById('attendanceRecordsContainer');
     if (!container) return;
 
-    var records = attendanceState.records || [];
-    var users = attendanceState.users || [];
+    // Step 1: population. Step 2: the existing date-independent filters.
+    var records = filterAttendanceRecordsByPopulation(attendanceState.records || []);
+    var users = getAttendancePopulationUsers();
     var filters = getAttendanceFilters();
     var filtered = filterAttendanceRecords(records, filters);
     var sorted = sortAttendanceRecords(filtered, attendanceState.sortField, attendanceState.sortDir);
@@ -1916,14 +2511,16 @@
   }
 
   function openAttendanceDetailModal(recordId) {
-    var records = attendanceState.records || [];
+    // Resolve only from the same population-filtered set the table renders,
+    // so a record from the other population can never be opened directly.
+    var records = filterAttendanceRecordsByPopulation(attendanceState.records || []);
     var record = null;
     for (var i = 0; i < records.length; i++) {
       if (records[i].id === recordId) { record = records[i]; break; }
     }
 
     if (!record) {
-      console.error('Attendance record not found:', recordId);
+      console.error('Attendance record not found for the selected population:', recordId);
       return;
     }
 
@@ -2065,8 +2662,9 @@
   }
 
   function exportAttendanceFiltered() {
-    var records = attendanceState.records || [];
-    var users = attendanceState.users || [];
+    // Population filter first, so an export can never mix the two groups.
+    var records = filterAttendanceRecordsByPopulation(attendanceState.records || []);
+    var users = getAttendancePopulationUsers();
     var filters = getAttendanceFilters();
     var filtered = filterAttendanceRecords(records, filters);
 
@@ -2134,6 +2732,30 @@
   }
 
   function setupAttendanceEventListeners() {
+    var populationToggle = document.getElementById('attendancePopulationToggle');
+    if (populationToggle) {
+      populationToggle.addEventListener('click', function(e) {
+        var btn = e.target.closest ? e.target.closest('.population-toggle-btn') : null;
+        if (!btn) return;
+        var population = btn.getAttribute('data-population');
+        if (!population || population === attendanceState.filters.population) return;
+
+        attendanceState.filters.population = population;
+        // Department options follow the selected population.
+        attendanceState.filters.department = '';
+        var deptEl2 = document.getElementById('attendanceDeptFilter');
+        if (deptEl2) deptEl2.value = '';
+
+        populationToggle.querySelectorAll('.population-toggle-btn').forEach(function(b) {
+          b.classList.toggle('active', b === btn);
+        });
+
+        populateAttendanceDeptFilter(getAttendancePopulationUsers());
+        // Reuses the records already loaded by the existing realtime listener.
+        renderAttendanceRecordsTable();
+      });
+    }
+
     var searchInput = document.getElementById('attendanceSearch');
     if (searchInput) {
       var searchTimeout;
@@ -2275,6 +2897,21 @@
       return;
     }
 
+    // Division Admin keeps the existing student-only behaviour: the Staff
+    // option is removed so unrestricted staff attendance is never exposed.
+    var role = await window.getCurrentUserRole?.();
+    if (role === 'divisionAdmin') {
+      attendanceState.filters.population = 'students';
+      var toggle = document.getElementById('attendancePopulationToggle');
+      if (toggle) {
+        var staffBtn = toggle.querySelector('.population-toggle-btn[data-population="staff"]');
+        if (staffBtn) staffBtn.remove();
+        toggle.querySelectorAll('.population-toggle-btn').forEach(function(b) {
+          b.classList.toggle('active', b.getAttribute('data-population') === 'students');
+        });
+      }
+    }
+
     await loadAttendanceSectionData();
   }
 
@@ -2306,11 +2943,22 @@
     container.innerHTML = '<div class="spinner-overlay"><div class="spinner"></div></div>';
 
     try {
-      var users = await loadUsers();
+      const role = await window.getCurrentUserRole?.();
+      const isDivisionAdmin = role === 'divisionAdmin';
+
+      let users;
+      if (isDivisionAdmin) {
+        users = await apiListStudents();
+        // Don't set up real-time listener for Division Admin since we use API
+      } else {
+        users = await loadUsers();
+        // Set up real-time listener for Super Admin
+        subscribeToUsersRealtime();
+      }
       state.usersData = users;
 
-      // Set up real-time listener for users
-      subscribeToUsersRealtime();
+      // Render scope indicator for Division Admin
+      await renderDivisionAdminScopeIndicator();
 
       var countEl = document.getElementById('employeeCount');
       if (countEl) {
@@ -2323,6 +2971,491 @@
       console.error('Failed to load employees', e);
       if (container) container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;"><circle cx="9" cy="9" r="4"/><line x1="1.5" y1="1.5" x2="22.5" y2="22.5"/></svg></div><h4>Unable to load students</h4><p>Check Firebase connection and try again.</p></div>';
     }
+  }
+
+  // ============================================
+  // STAFF MANAGEMENT
+  // ============================================
+  async function loadStaffSection() {
+    var container = document.getElementById('staffTable');
+    if (!container || !getDb()) return;
+
+    container.innerHTML = '<div class="spinner-overlay"><div class="spinner"></div></div>';
+
+    try {
+      const role = await window.getCurrentUserRole?.();
+      const isStaffManager = ['superAdmin', 'so1', 'chiefClerk'].includes(role);
+
+      if (!isStaffManager) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div><h4>Access Denied</h4><p>You do not have permission to view staff management.</p></div>';
+        return;
+      }
+
+      const staff = await apiListStaff();
+      state.staffData = staff;
+
+      var countEl = document.getElementById('staffCount');
+      if (countEl) {
+        countEl.innerHTML = '<span class="employee-count-badge">' + staff.length + ' Staff</span>';
+      }
+
+      populateStaffDeptFilter(staff);
+      populateStaffAppointmentFilter(staff);
+      renderStaffTable(staff);
+    } catch (e) {
+      console.error('Failed to load staff', e);
+      if (container) container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;"><circle cx="9" cy="9" r="4"/><line cx="1.5" y1="1.5" x2="22.5" y2="22.5"/></svg></div><h4>Unable to load staff</h4><p>' + escapeHtml(e && e.message ? e.message : String(e)) + '</p></div>';
+    }
+  }
+
+  function populateStaffDeptFilter(staff) {
+    var select = document.getElementById('staffDeptFilter');
+    if (!select) return;
+
+    var depts = {};
+    staff.forEach(function(u) {
+      var d = u.dept || 'Unknown';
+      depts[d] = (depts[d] || 0) + 1;
+    });
+
+    var html = '<option value="">All Departments</option>';
+    Object.keys(depts).sort().forEach(function(d) {
+      html += '<option value="' + escapeHtml(d) + '">' + escapeHtml(d) + ' (' + depts[d] + ')</option>';
+    });
+
+    select.innerHTML = html;
+  }
+
+  function populateStaffAppointmentFilter(staff) {
+    var select = document.getElementById('staffAppointmentFilter');
+    if (!select) return;
+
+    var apps = {};
+    staff.forEach(function(u) {
+      var a = u.appointment || 'Unknown';
+      apps[a] = (apps[a] || 0) + 1;
+    });
+
+    var html = '<option value="">All Appointments</option>';
+    Object.keys(apps).sort().forEach(function(a) {
+      html += '<option value="' + escapeHtml(a) + '">' + escapeHtml(a) + ' (' + apps[a] + ')</option>';
+    });
+
+    select.innerHTML = html;
+  }
+
+  function renderStaffTable(staff) {
+    var container = document.getElementById('staffTable');
+    if (!container) return;
+
+    if (!staff || staff.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h4>No staff registered</h4><p>No staff records found in the Firestore database.</p></div>';
+      return;
+    }
+
+    var html = '<table class="table"><thead><tr><th>Employee ID</th><th>Name</th><th>Department</th><th>Appointment</th><th>Status</th><th>Phone</th><th>Actions</th></tr></thead><tbody>';
+
+    staff.forEach(function(u) {
+      var hasFace = !!(u.faceDescriptor && Array.isArray(u.faceDescriptor) && u.faceDescriptor.length > 0);
+      var faceStatus = hasFace
+        ? '<span class="employee-face-status registered"><span class="status-dot"></span> Face Registered</span>'
+        : '<span class="employee-face-status not-registered"><span class="status-dot"></span> Not Registered</span>';
+
+      html += '<tr>' +
+        '<td>' + escapeHtml(u.userId || u.id || '') + '</td>' +
+        '<td>' + escapeHtml(getUserName(u) || '') + '</td>' +
+        '<td>' + escapeHtml(u.dept || '--') + '</td>' +
+        '<td>' + escapeHtml(u.appointment || '--') + '</td>' +
+        '<td>' + escapeHtml(u.status || '--') + '</td>' +
+        '<td>' + escapeHtml(u.phone || '--') + '</td>' +
+        '<td>' +
+          '<button class="employee-action-btn" data-emp-id="' + escapeHtml(u.userId || u.id || '') + '" data-action="view">View</button>' +
+          '<button class="employee-action-btn btn-edit" data-emp-id="' + escapeHtml(u.userId || u.id || '') + '" data-action="edit">Edit</button>' +
+        '</td>' +
+        '</tr>';
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    container.querySelectorAll('.employee-action-btn[data-action="view"]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var empId = this.getAttribute('data-emp-id');
+        openStaffProfile(empId);
+      });
+    });
+
+    container.querySelectorAll('.employee-action-btn[data-action="edit"]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var empId = this.getAttribute('data-emp-id');
+        openEditStaffModal(empId);
+      });
+    });
+  }
+
+  async function filterStaff(searchTerm, deptFilter, appointmentFilter) {
+    if (!state.staffData) return;
+
+    const role = await window.getCurrentUserRole?.();
+    const isStaffManager = ['superAdmin', 'so1', 'chiefClerk'].includes(role);
+
+    let filtered;
+    if (isStaffManager) {
+      // Staff data is already loaded via API with server-side scope enforcement
+      filtered = state.staffData.filter(function(u) {
+        var term = (searchTerm || '').toLowerCase();
+        var matchesSearch = !term ||
+          (u.userId && u.userId.toLowerCase().indexOf(term) !== -1) ||
+          (u.id && u.id.toLowerCase().indexOf(term) !== -1) ||
+          (getUserName(u) || '').toLowerCase().indexOf(term) !== -1 ||
+          (u.appointment && u.appointment.toLowerCase().indexOf(term) !== -1) ||
+          (u.dept && u.dept.toLowerCase().indexOf(term) !== -1) ||
+          (u.phone && u.phone.toLowerCase().indexOf(term) !== -1);
+
+        var matchesDept = !deptFilter || (u.dept === deptFilter);
+        var matchesAppointment = !appointmentFilter || (u.appointment === appointmentFilter);
+
+        return matchesSearch && matchesDept && matchesAppointment;
+      });
+    } else {
+      filtered = [];
+    }
+
+    renderStaffTable(filtered);
+  }
+
+  function openStaffProfile(empId) {
+    var staff = state.staffData || [];
+    var user = staff.find(function(u) {
+      return (u.userId || u.id || '') === empId;
+    });
+
+    if (!user) {
+      console.error('Staff not found:', empId);
+      return;
+    }
+
+    state.currentStaffId = empId;
+
+    var profileId = document.getElementById('staffProfileEmployeeId');
+    var profileName = document.getElementById('staffProfileName');
+    var profileDept = document.getElementById('staffProfileDept');
+    var profileAppt = document.getElementById('staffProfileAppointment');
+    var profileStatus = document.getElementById('staffProfileStatus');
+    var profilePhone = document.getElementById('staffProfilePhone');
+    var profileReg = document.getElementById('staffProfileRegisteredAt');
+    var profileFace = document.getElementById('staffProfileFaceStatus');
+    var profilePhotoImg = document.getElementById('staffProfilePhotoImg');
+    var profilePhotoPlaceholder = document.getElementById('staffProfilePhotoPlaceholder');
+    var profilePhotoStatus = document.getElementById('staffProfilePhotoStatus');
+
+    if (profileId) profileId.textContent = escapeHtml(user.userId || user.id || '--');
+    if (profileName) profileName.textContent = escapeHtml(getUserName(user) || '--');
+    if (profileDept) profileDept.textContent = escapeHtml(user.dept || '--');
+    if (profileAppt) profileAppt.textContent = escapeHtml(user.appointment || '--');
+    if (profileStatus) profileStatus.textContent = escapeHtml(user.status || '--');
+    if (profilePhone) profilePhone.textContent = escapeHtml(user.phone || 'Not provided');
+
+    if (profileReg) {
+      var regDate = user.registeredAt && user.registeredAt.toDate ? user.registeredAt.toDate().toLocaleString() : 'Not available';
+      profileReg.textContent = escapeHtml(regDate);
+    }
+
+    if (profileFace) {
+      var hasFace = !!(user.faceDescriptor && Array.isArray(user.faceDescriptor) && user.faceDescriptor.length > 0);
+      if (hasFace) {
+        profileFace.innerHTML = '<span class="employee-face-status registered"><span class="status-dot" style="background-color:var(--color-success);"></span> Face Registered</span>';
+        profileFace.className = 'profile-value face-registered';
+      } else {
+        profileFace.innerHTML = '<span class="employee-face-status not-registered"><span class="status-dot"></span> Face Not Registered</span>';
+        profileFace.className = 'profile-value face-not-registered';
+      }
+    }
+
+    if (profilePhotoImg && profilePhotoPlaceholder && profilePhotoStatus) {
+      if (user.faceImage) {
+        profilePhotoImg.src = user.faceImage;
+        profilePhotoImg.style.display = 'block';
+        profilePhotoPlaceholder.style.display = 'none';
+        profilePhotoStatus.innerHTML = '<span class="status-dot" style="background-color:var(--color-success);box-shadow:0 0 4px rgba(46,139,87,0.5);width:6px;height:6px;border-radius:50%;flex-shrink:0;"></span> FACE REGISTERED';
+        profilePhotoStatus.style.color = 'var(--color-success)';
+      } else {
+        profilePhotoImg.style.display = 'none';
+        profilePhotoPlaceholder.style.display = 'flex';
+        var placeholderSpan = profilePhotoPlaceholder.querySelector('span');
+        if (placeholderSpan) placeholderSpan.textContent = 'NO REGISTERED PHOTO';
+        profilePhotoStatus.innerHTML = '<span class="status-dot" style="background-color:var(--text-muted);width:6px;height:6px;border-radius:50%;flex-shrink:0;"></span> NO PHOTO';
+        profilePhotoStatus.style.color = 'var(--text-muted)';
+      }
+    }
+
+    var modal = document.getElementById('staffProfileModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.removeAttribute('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
+  function closeStaffProfile() {
+    var modal = document.getElementById('staffProfileModal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.setAttribute('hidden', 'hidden');
+      document.body.style.overflow = '';
+    }
+    state.currentStaffId = null;
+  }
+
+  async function openEditStaffModal(empId) {
+    var staff = state.staffData || [];
+    var user = staff.find(function(u) {
+      return (u.userId || u.id || '') === empId;
+    });
+
+    if (!user) {
+      console.error('Staff not found:', empId);
+      return;
+    }
+
+    state.currentStaffId = empId;
+
+    var editId = document.getElementById('editStaffEmployeeId');
+    var editName = document.getElementById('editStaffEmployeeName');
+    var editDept = document.getElementById('editStaffEmployeeDept');
+    var editAppointment = document.getElementById('editStaffEmployeeAppointment');
+    var editStatus = document.getElementById('editStaffEmployeeStatus');
+    var editPhone = document.getElementById('editStaffEmployeePhone');
+
+    if (editId) editId.value = user.userId || user.id || '';
+    if (editName) editName.value = getUserName(user) || '';
+    if (editDept) editDept.value = user.dept || '';
+    if (editAppointment) editAppointment.value = user.appointment || '';
+    if (editStatus) editStatus.value = user.status || '';
+    if (editPhone) editPhone.value = user.phone || '';
+
+    var modal = document.getElementById('editStaffModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.removeAttribute('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
+  function closeEditStaffModal() {
+    var modal = document.getElementById('editStaffModal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.setAttribute('hidden', 'hidden');
+      document.body.style.overflow = '';
+    }
+    state.currentStaffId = null;
+  }
+
+  async function confirmEditStaff() {
+    if (!state.currentStaffId) {
+      showStatus('No staff selected for editing.', 'error');
+      return;
+    }
+
+    var editName = document.getElementById('editStaffEmployeeName');
+    var editDept = document.getElementById('editStaffEmployeeDept');
+    var editAppointment = document.getElementById('editStaffEmployeeAppointment');
+    var editStatus = document.getElementById('editStaffEmployeeStatus');
+    var editPhone = document.getElementById('editStaffEmployeePhone');
+
+    var updateData = {};
+    if (editName) updateData.name = editName.value.trim();
+    if (editDept) updateData.dept = editDept.value;
+    if (editAppointment) updateData.appointment = editAppointment.value;
+    if (editStatus) updateData.status = editStatus.value;
+    if (editPhone) updateData.phone = editPhone.value.trim();
+
+    if (Object.keys(updateData).length === 0) {
+      showStatus('No changes to save.', 'info');
+      return;
+    }
+
+    try {
+      await apiUpdateStaff(state.currentStaffId, updateData);
+      showStatus('Staff updated successfully', 'success');
+      closeEditStaffModal();
+      await loadStaffSection();
+    } catch (e) {
+      showStatus('Failed to update staff: ' + getErrorMessage(e), 'error');
+    }
+  }
+
+  async function openDeleteStaffConfirmation() {
+    var staff = state.staffData || [];
+    var user = staff.find(function(u) {
+      return (u.userId || u.id || '') === state.currentStaffId;
+    });
+
+    if (!user) {
+      showStatus('No staff selected for deletion.', 'error');
+      return;
+    }
+
+    var nameEl = document.getElementById('staffDeleteConfirmName');
+    var idEl = document.getElementById('staffDeleteConfirmId');
+    var apptEl = document.getElementById('staffDeleteConfirmAppointment');
+    var deptEl = document.getElementById('staffDeleteConfirmDept');
+
+    if (nameEl) nameEl.textContent = getUserName(user) || user.userId || user.id || '--';
+    if (idEl) idEl.textContent = user.userId || user.id || '--';
+    if (apptEl) apptEl.textContent = user.appointment || '--';
+    if (deptEl) deptEl.textContent = user.dept || '--';
+
+    var overlay = document.getElementById('staffDeleteConfirmOverlay');
+    if (overlay) {
+      overlay.classList.remove('hidden');
+      overlay.removeAttribute('hidden');
+    }
+  }
+
+  function closeDeleteStaffConfirmation() {
+    var overlay = document.getElementById('staffDeleteConfirmOverlay');
+    if (overlay) {
+      overlay.classList.add('hidden');
+      overlay.setAttribute('hidden', 'hidden');
+    }
+  }
+
+  async function confirmDeleteStaff() {
+    if (!state.currentStaffId) {
+      showStatus('No staff selected for deletion.', 'error');
+      return;
+    }
+
+    var confirmBtn = document.getElementById('staffDeleteConfirmBtn');
+    try {
+      if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Deleting...';
+      }
+
+      await apiDeleteStaff(state.currentStaffId);
+      showStatus('Staff deleted successfully', 'success');
+      closeDeleteStaffConfirmation();
+      closeStaffProfile();
+      await loadStaffSection();
+    } catch (e) {
+      showStatus('Failed to delete staff: ' + getErrorMessage(e), 'error');
+    } finally {
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Delete Staff';
+      }
+    }
+  }
+
+  function setupStaffEventListeners() {
+    var searchInput = document.getElementById('staffSearch');
+    var deptFilter = document.getElementById('staffDeptFilter');
+    var appointmentFilter = document.getElementById('staffAppointmentFilter');
+
+    function applyFilters() {
+      filterStaff(
+        searchInput ? searchInput.value.trim() : '',
+        deptFilter ? deptFilter.value : '',
+        appointmentFilter ? appointmentFilter.value : ''
+      );
+    }
+
+    if (searchInput) {
+      var searchTimeout;
+      searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(applyFilters, 300);
+      });
+    }
+
+    var registerStaffBtnForm = document.getElementById('registerStaffBtnForm');
+    if (registerStaffBtnForm) {
+      registerStaffBtnForm.addEventListener('click', registerStaff);
+    }
+
+    [deptFilter, appointmentFilter].forEach(function(filter) {
+      if (filter) {
+        filter.addEventListener('change', applyFilters);
+      }
+    });
+
+    var modal = document.getElementById('staffProfileModal');
+    if (modal) {
+      modal.addEventListener('click', function(e) {
+        if (e.target === modal || e.target.classList.contains('modal-backdrop')) {
+          closeStaffProfile();
+        }
+      });
+    }
+
+    var closeBtns = document.querySelectorAll('[data-close="staffProfileModal"]');
+    closeBtns.forEach(function(btn) {
+      btn.addEventListener('click', closeStaffProfile);
+    });
+
+    var deleteBtn = document.getElementById('staffProfileDeleteBtn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openDeleteStaffConfirmation();
+      });
+    }
+
+    var cancelBtn = document.getElementById('staffDeleteConfirmCancel');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', closeDeleteStaffConfirmation);
+    }
+
+    var confirmBtn = document.getElementById('staffDeleteConfirmBtn');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', confirmDeleteStaff);
+    }
+
+    var confirmOverlay = document.getElementById('staffDeleteConfirmOverlay');
+    if (confirmOverlay) {
+      confirmOverlay.addEventListener('click', function(e) {
+        if (e.target === confirmOverlay) {
+          closeDeleteStaffConfirmation();
+        }
+      });
+    }
+
+    // Edit Staff Modal handlers
+    var editModal = document.getElementById('editStaffModal');
+    if (editModal) {
+      editModal.addEventListener('click', function(e) {
+        if (e.target === editModal || e.target.classList.contains('modal-backdrop')) {
+          closeEditStaffModal();
+        }
+      });
+    }
+
+    var editCloseBtns = document.querySelectorAll('[data-close="editStaffModal"]');
+    editCloseBtns.forEach(function(btn) {
+      btn.addEventListener('click', closeEditStaffModal);
+    });
+
+    var editCancelBtn = document.getElementById('editStaffCancelBtn');
+    if (editCancelBtn) {
+      editCancelBtn.addEventListener('click', closeEditStaffModal);
+    }
+
+    var editSaveBtn = document.getElementById('editStaffSaveBtn');
+    if (editSaveBtn) {
+      editSaveBtn.addEventListener('click', confirmEditStaff);
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        var editModal = document.getElementById('editStaffModal');
+        if (editModal && !editModal.classList.contains('hidden')) {
+          closeEditStaffModal();
+        }
+      }
+    });
   }
 
   function populateEmployeeDeptFilter(users) {
@@ -2352,10 +3485,13 @@
       return;
     }
 
-    var html = '<table class="table"><thead><tr><th>Employee ID</th><th>Name</th><th>Department</th><th>Face Status</th><th>Registered</th><th>Actions</th></tr></thead><tbody>';
+    var html = '<table class="table"><thead><tr><th>Service No.</th><th>Name</th><th>Rank</th><th>Course</th><th>Term</th><th>Division</th><th>Syndicate</th><th>Status</th><th>Phone</th><th>Actions</th></tr></thead><tbody>';
 
     users.forEach(function(u) {
-      var regDate = u.registeredAt && u.registeredAt.toDate ? u.registeredAt.toDate().toLocaleDateString() : '--';
+      // Student Edit is unavailable to so1 / chiefClerk (read-only roles).
+      var editActionHtml = state.studentReadOnly
+        ? ''
+        : '<button class="employee-action-btn btn-edit" data-emp-id="' + escapeHtml(u.userId || u.id || '') + '" data-action="edit">Edit</button>';
       var hasFace = !!(u.faceDescriptor && Array.isArray(u.faceDescriptor) && u.faceDescriptor.length > 0);
       var faceStatus = hasFace
         ? '<span class="employee-face-status registered"><span class="status-dot"></span> Face Registered</span>'
@@ -2364,38 +3500,64 @@
       html += '<tr>' +
         '<td>' + escapeHtml(u.userId || u.id || '') + '</td>' +
         '<td>' + escapeHtml(getUserName(u) || '') + '</td>' +
-        '<td>' + escapeHtml(u.dept || '') + '</td>' +
-        '<td>' + faceStatus + '</td>' +
-        '<td>' + escapeHtml(regDate) + '</td>' +
-        '<td><button class="employee-action-btn" data-emp-id="' + escapeHtml(u.userId || u.id || '') + '">View</button></td>' +
+        '<td>' + escapeHtml(u.rank || '--') + '</td>' +
+        '<td>' + escapeHtml(u.course || '--') + '</td>' +
+        '<td>' + escapeHtml(u.term || '--') + '</td>' +
+        '<td>' + escapeHtml(u.division || '--') + '</td>' +
+        '<td>' + escapeHtml(u.syndicate || '--') + '</td>' +
+        '<td>' + escapeHtml(u.appointment || '--') + '</td>' +
+        '<td>' + escapeHtml(u.phone || '--') + '</td>' +
+        '<td>' +
+          '<button class="employee-action-btn" data-emp-id="' + escapeHtml(u.userId || u.id || '') + '" data-action="view">View</button>' +
+          editActionHtml +
+        '</td>' +
         '</tr>';
     });
 
     html += '</tbody></table>';
     container.innerHTML = html;
 
-    container.querySelectorAll('.employee-action-btn').forEach(function(btn) {
+    container.querySelectorAll('.employee-action-btn[data-action="view"]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var empId = this.getAttribute('data-emp-id');
         openEmployeeProfile(empId);
       });
     });
+
+    container.querySelectorAll('.employee-action-btn[data-action="edit"]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var empId = this.getAttribute('data-emp-id');
+        openEditEmployeeModal(empId);
+      });
+    });
   }
 
-  function filterEmployees(searchTerm, deptFilter) {
+  async function filterEmployees(searchTerm, deptFilter, termFilter, syndicateFilter, statusFilter) {
     if (!state.usersData) return;
-    var filtered = state.usersData.filter(function(u) {
-      var term = (searchTerm || '').toLowerCase();
-      var matchesSearch = !term ||
-        (u.userId && u.userId.toLowerCase().indexOf(term) !== -1) ||
-        (u.id && u.id.toLowerCase().indexOf(term) !== -1) ||
-        (getUserName(u) || '').toLowerCase().indexOf(term) !== -1 ||
-        (u.dept && u.dept.toLowerCase().indexOf(term) !== -1);
 
-      var matchesDept = !deptFilter || (u.dept === deptFilter);
+    const role = await window.getCurrentUserRole?.();
+    const isDivisionAdmin = role === 'divisionAdmin';
 
-      return matchesSearch && matchesDept;
-    });
+    let filtered;
+    if (isDivisionAdmin) {
+      filtered = await apiListStudents({ searchTerm, termFilter, syndicateFilter, statusFilter });
+    } else {
+      filtered = state.usersData.filter(function(u) {
+        var term = (searchTerm || '').toLowerCase();
+        var matchesSearch = !term ||
+          (u.userId && u.userId.toLowerCase().indexOf(term) !== -1) ||
+          (u.id && u.id.toLowerCase().indexOf(term) !== -1) ||
+          (getUserName(u) || '').toLowerCase().indexOf(term) !== -1 ||
+          (u.dept && u.dept.toLowerCase().indexOf(term) !== -1);
+
+        var matchesDept = !deptFilter || (u.dept === deptFilter);
+        var matchesTerm = !termFilter || (u.term === termFilter);
+        var matchesSyndicate = !syndicateFilter || (u.syndicate === syndicateFilter);
+        var matchesStatus = !statusFilter || (u.appointment === statusFilter);
+
+        return matchesSearch && matchesDept && matchesTerm && matchesSyndicate && matchesStatus;
+      });
+    }
 
     renderEmployeeTable(filtered);
   }
@@ -2512,25 +3674,185 @@
     currentDeleteEmployee = null;
   }
 
+  async function openEditEmployeeModal(empId) {
+    // Defensive: so1 / chiefClerk are read-only for Students.
+    if (state.studentReadOnly) {
+      console.warn('Student edit is not permitted for this role.');
+      return;
+    }
+
+    var users = state.usersData || [];
+    var user = users.find(function(u) {
+      return (u.userId || u.id || '') === empId;
+    });
+
+    if (!user) {
+      console.error('Employee not found:', empId);
+      return;
+    }
+
+    state.currentProfileEmpId = empId;
+
+    // Populate edit modal fields
+    var editId = document.getElementById('editEmployeeId');
+    var editName = document.getElementById('editEmployeeName');
+    var editRank = document.getElementById('editEmployeeRank');
+    var editTerm = document.getElementById('editEmployeeTerm');
+    var editSyndicate = document.getElementById('editEmployeeSyndicate');
+    var editAppointment = document.getElementById('editEmployeeAppointment');
+    var editPhone = document.getElementById('editEmployeePhone');
+
+    if (editId) editId.value = user.userId || user.id || '';
+    if (editName) editName.value = getUserName(user) || '';
+    if (editRank) editRank.value = user.rank || '';
+    if (editTerm) editTerm.value = user.term || '';
+    if (editSyndicate) editSyndicate.value = user.syndicate || '';
+    if (editAppointment) editAppointment.value = user.appointment || '';
+    if (editPhone) editPhone.value = user.phone || '';
+
+    // For Division Admin, disable and show scope-fixed fields
+    const role = await window.getCurrentUserRole?.();
+    const isDivisionAdmin = role === 'divisionAdmin';
+
+    if (isDivisionAdmin) {
+      const scope = await window.getDivisionAdminScope?.();
+      if (scope) {
+        const deptEl = document.getElementById('editEmployeeDept');
+        const courseEl = document.getElementById('editEmployeeCourse');
+        const divisionEl = document.getElementById('editEmployeeDivision');
+        
+        if (deptEl) {
+          deptEl.value = scope.department;
+          deptEl.disabled = true;
+        }
+        if (courseEl) {
+          courseEl.value = scope.course;
+          courseEl.disabled = true;
+        }
+        if (divisionEl) {
+          divisionEl.value = scope.division;
+          divisionEl.disabled = true;
+        }
+
+        // Populate term and syndicate based on scope
+        const courseData = COURSE_DATA[scope.course];
+        if (courseData && editTerm) {
+          populateSelect(editTerm, courseData.terms, 'Select Term');
+          editTerm.disabled = false;
+        }
+        if (courseData && divisionEl && divisionEl.value && courseData.divisions[divisionEl.value] && editSyndicate) {
+          const syndicates = courseData.divisions[divisionEl.value].syndicates;
+          populateSelect(editSyndicate, syndicates, 'Select Syndicate');
+          editSyndicate.disabled = false;
+        }
+      }
+    }
+
+    var modal = document.getElementById('editEmployeeModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.removeAttribute('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
+  function closeEditEmployeeModal() {
+    var modal = document.getElementById('editEmployeeModal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.setAttribute('hidden', 'hidden');
+      document.body.style.overflow = '';
+    }
+    state.currentProfileEmpId = null;
+  }
+
+  async function confirmEditEmployee() {
+    if (!state.currentProfileEmpId) {
+      showStatus('No employee selected for editing.', 'error');
+      return;
+    }
+
+    const role = await window.getCurrentUserRole?.();
+    const isDivisionAdmin = role === 'divisionAdmin';
+
+    var editName = document.getElementById('editEmployeeName');
+    var editRank = document.getElementById('editEmployeeRank');
+    var editTerm = document.getElementById('editEmployeeTerm');
+    var editSyndicate = document.getElementById('editEmployeeSyndicate');
+    var editAppointment = document.getElementById('editEmployeeAppointment');
+    var editPhone = document.getElementById('editEmployeePhone');
+
+    var updateData = {};
+    if (editName) updateData.name = editName.value.trim();
+    if (editRank) updateData.rank = editRank.value;
+    if (editTerm) updateData.term = editTerm.value;
+    if (editSyndicate) updateData.syndicate = editSyndicate.value;
+    if (editAppointment) updateData.appointment = editAppointment.value;
+    if (editPhone) updateData.phone = editPhone.value.trim();
+
+    if (isDivisionAdmin) {
+      const scope = await window.getDivisionAdminScope?.();
+      if (scope) {
+        updateData.dept = scope.department;
+        updateData.course = scope.course;
+        updateData.division = scope.division;
+      }
+    } else {
+      var editDept = document.getElementById('editEmployeeDept');
+      var editCourse = document.getElementById('editEmployeeCourse');
+      var editDivision = document.getElementById('editEmployeeDivision');
+      if (editDept) updateData.dept = editDept.value;
+      if (editCourse) updateData.course = editCourse.value;
+      if (editDivision) updateData.division = editDivision.value;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      showStatus('No changes to save.', 'info');
+      return;
+    }
+
+    try {
+      await apiUpdateStudent(state.currentProfileEmpId, updateData);
+      showStatus('Student updated successfully', 'success');
+      closeEditEmployeeModal();
+      
+      // Refresh the employee list
+      await loadEmployeesSection();
+    } catch (e) {
+      showStatus('Failed to update student: ' + getErrorMessage(e), 'error');
+    }
+  }
+
   function setupEmployeeEventListeners() {
     var searchInput = document.getElementById('employeeSearch');
     var deptFilter = document.getElementById('employeeDeptFilter');
+    var termFilter = document.getElementById('employeeTermFilter');
+    var syndicateFilter = document.getElementById('employeeSyndicateFilter');
+    var statusFilter = document.getElementById('employeeStatusFilter');
+
+    function applyFilters() {
+      filterEmployees(
+        searchInput ? searchInput.value.trim() : '',
+        deptFilter ? deptFilter.value : '',
+        termFilter ? termFilter.value : '',
+        syndicateFilter ? syndicateFilter.value : '',
+        statusFilter ? statusFilter.value : ''
+      );
+    }
 
     if (searchInput) {
       var searchTimeout;
       searchInput.addEventListener('input', function() {
         clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(function() {
-          filterEmployees(searchInput.value.trim(), deptFilter ? deptFilter.value : '');
-        }, 300);
+        searchTimeout = setTimeout(applyFilters, 300);
       });
     }
 
-    if (deptFilter) {
-      deptFilter.addEventListener('change', function() {
-        filterEmployees(searchInput ? searchInput.value.trim() : '', deptFilter.value);
-      });
-    }
+    [deptFilter, termFilter, syndicateFilter, statusFilter].forEach(function(filter) {
+      if (filter) {
+        filter.addEventListener('change', applyFilters);
+      }
+    });
 
     var modal = document.getElementById('employeeProfileModal');
     if (modal) {
@@ -2568,6 +3890,11 @@
     if (confirmDeleteBtn) {
       confirmDeleteBtn.addEventListener('click', function(e) {
         e.stopPropagation();
+        // Defensive: so1 / chiefClerk are read-only for Students.
+        if (state.studentReadOnly) {
+          console.warn('Student delete is not permitted for this role.');
+          return;
+        }
         confirmDeleteEmployee();
       });
     }
@@ -2575,7 +3902,7 @@
     // Close delete confirmation when clicking overlay or pressing Escape
     var confirmOverlay = document.getElementById('deleteConfirmOverlay');
     if (confirmOverlay) {
-      confirmOverlay.addEventListener('click', function(e) {
+confirmOverlay.addEventListener('click', function(e) {
         if (e.target === confirmOverlay) {
           closeDeleteConfirmation();
         }
@@ -2583,7 +3910,42 @@
     }
   }
 
-   // ============================================
+  // Edit Employee Modal handlers
+  var editModal = document.getElementById('editEmployeeModal');
+  if (editModal) {
+    editModal.addEventListener('click', function(e) {
+      if (e.target === editModal || e.target.classList.contains('modal-backdrop')) {
+        closeEditEmployeeModal();
+      }
+    });
+  }
+
+  var editCloseBtns = document.querySelectorAll('[data-close="editEmployeeModal"]');
+  editCloseBtns.forEach(function(btn) {
+    btn.addEventListener('click', closeEditEmployeeModal);
+  });
+
+  var editCancelBtn = document.getElementById('editEmployeeCancelBtn');
+  if (editCancelBtn) {
+    editCancelBtn.addEventListener('click', closeEditEmployeeModal);
+  }
+
+  var editSaveBtn = document.getElementById('editEmployeeSaveBtn');
+  if (editSaveBtn) {
+    editSaveBtn.addEventListener('click', confirmEditEmployee);
+  }
+
+  // Close edit modal on Escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      var editModal = document.getElementById('editEmployeeModal');
+      if (editModal && !editModal.classList.contains('hidden')) {
+        closeEditEmployeeModal();
+      }
+    }
+  });
+
+  // ============================================
   // DELETE EMPLOYEE
   // ============================================
   var currentDeleteEmployee = null;
@@ -3001,7 +4363,7 @@
          loadDashboardData();
          await loadUserRoleUI();
        } else {
-         var kpiContainer = document.getElementById('dashKpiCards');
+         var kpiContainer = document.getElementById('dashStudentKpis');
          if (kpiContainer) {
            kpiContainer.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px;">Firebase connection unavailable. Please refresh the page.</div>';
          }
@@ -3016,13 +4378,30 @@
     period: '30days',
     customRange: null,
     department: '',
+    population: 'students',
     users: [],
+    staffUsers: [],
     attendance: [],
     isLoading: false,
     initialized: false
   };
 
-  function getAnalyticsDateRange(period, customRange) {
+    // Keeps the analytics records split into the two populations so the
+    // Students / Staff selector never mixes them.
+    function setAnalyticsAttendanceRecords(records) {
+      var split = splitRecordsByPopulation(records);
+      analyticsState.studentRecords = split.students;
+      analyticsState.staffRecords = split.staff;
+      return records;
+    }
+
+    function getAnalyticsPopulationUsers() {
+      return analyticsState.population === 'staff'
+        ? (analyticsState.staffUsers || [])
+        : (analyticsState.users || []);
+    }
+
+  async function getAnalyticsDateRange(period, customRange) {
     var now = new Date();
     var end = new Date(now);
     var start = new Date(now);
@@ -3089,7 +4468,10 @@
     showEmpty('analyticsEmployeeTable', '');
 
     try {
-      analyticsState.users = await loadUsers();
+      // One scoped read feeds both populations.
+      var analyticsUsersSplit = setUsersSnapshot(await fetchScopedUsers());
+      analyticsState.users = analyticsUsersSplit.students;
+      analyticsState.staffUsers = analyticsUsersSplit.staff;
       subscribeToUsersRealtime();
       
       var range = getAnalyticsDateRange(analyticsState.period, analyticsState.customRange);
@@ -3100,17 +4482,25 @@
       subscribeToAnalyticsAttendance(range.start, range.end);
 
       // Initial one-time load for immediate rendering
-      var snapshot = await db.collection('attendance')
+      var role = await window.getCurrentUserRole?.();
+      var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
+      var query = db.collection('attendance')
         .where('date', '>=', startDateStr)
-        .where('date', '<=', endDateStr)
-        .get();
+        .where('date', '<=', endDateStr);
+      if (scope) {
+        query = query.where('dept', '==', scope.department)
+                     .where('course', '==', scope.course)
+                     .where('division', '==', scope.division);
+      }
+      var snapshot = await query.get();
 
-      analyticsState.attendance = snapshot.docs.map(function(doc) { return { id: doc.id, ...doc.data() }; });
-      analyticsState.attendance.sort(function(a, b) {
+      var analyticsRecords = snapshot.docs.map(function(doc) { return { id: doc.id, ...doc.data() }; });
+      analyticsRecords.sort(function(a, b) {
         return (b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : 0) - (a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : 0);
       });
+      analyticsState.attendance = setAnalyticsAttendanceRecords(analyticsRecords);
 
-      populateAnalyticsDeptFilter(analyticsState.users);
+      populateAnalyticsDeptFilter(getAnalyticsPopulationUsers());
       renderAnalytics();
     } catch (e) {
       console.error('Analytics: Failed to load data', e);
@@ -3121,8 +4511,10 @@
   }
 
   function renderAnalytics() {
-    var records = analyticsState.attendance || [];
-    var users = analyticsState.users || [];
+    var isStaffPopulation = analyticsState.population === 'staff';
+    var populationRecords = isStaffPopulation ? analyticsState.staffRecords : analyticsState.studentRecords;
+    var records = populationRecords || [];
+    var users = isStaffPopulation ? (analyticsState.staffUsers || []) : (analyticsState.users || []);
     var period = analyticsState.period;
     var range = getAnalyticsDateRange(period, analyticsState.customRange);
 
@@ -3684,11 +5076,19 @@
       return;
     }
 
-    db.collection('attendance')
-      .where('date', '>=', previousStart)
-      .where('date', '<=', previousEnd)
-      .get()
-      .then(function(snapshot) {
+    (async function() {
+      var role = await window.getCurrentUserRole?.();
+      var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
+      var query = db.collection('attendance')
+        .where('date', '>=', previousStart)
+        .where('date', '<=', previousEnd);
+      if (scope) {
+        query = query.where('dept', '==', scope.department)
+                     .where('course', '==', scope.course)
+                     .where('division', '==', scope.division);
+      }
+      return query.get();
+    })().then(function(snapshot) {
         var previousRecords = snapshot.docs.map(function(doc) { return { id: doc.id, ...doc.data() }; });
         var currentRecords = analyticsState.attendance || [];
 
@@ -3943,8 +5343,8 @@
     doc.text('RESTRICTED', pageWidth / 2, 11, { align: 'center' });
 
     try {
-      doc.addImage('assets/afcsc logo.png', 'PNG', 14, 15, 16, 16);
-      doc.addImage('assets/army logo.png', 'PNG', pageWidth - 30, 15, 16, 16);
+      doc.addImage('assets/afcsc-logo.png', 'PNG', 14, 15, 16, 16);
+      doc.addImage('assets/army-logo.png', 'PNG', pageWidth - 30, 15, 16, 16);
     } catch (e) {
       // Logo loading failed - continue with text branding
     }
@@ -4348,12 +5748,37 @@
       });
     }
 
+    var populationToggle = document.getElementById('analyticsPopulationToggle');
+    if (populationToggle) {
+      populationToggle.addEventListener('click', function(e) {
+        var btn = e.target.closest ? e.target.closest('.population-toggle-btn') : null;
+        if (!btn) return;
+        var population = btn.getAttribute('data-population');
+        if (!population || population === analyticsState.population) return;
+        analyticsState.population = population;
+        populationToggle.querySelectorAll('.population-toggle-btn').forEach(function(b) {
+          b.classList.toggle('active', b === btn);
+        });
+        // Department options follow the selected population.
+        populateAnalyticsDeptFilter(getAnalyticsPopulationUsers());
+        if (deptFilter) deptFilter.value = '';
+        analyticsState.department = '';
+        renderAnalytics();
+      });
+    }
+
     var resetBtn = document.getElementById('analyticsResetBtn');
     if (resetBtn) {
       resetBtn.addEventListener('click', function() {
         analyticsState.period = '30days';
         analyticsState.customRange = null;
         analyticsState.department = '';
+        analyticsState.population = 'students';
+        if (populationToggle) {
+          populationToggle.querySelectorAll('.population-toggle-btn').forEach(function(b) {
+            b.classList.toggle('active', b.getAttribute('data-population') === 'students');
+          });
+        }
         if (periodSelect) periodSelect.value = '30days';
         var customRangeEl = document.getElementById('analyticsCustomRange');
         if (customRangeEl) {
@@ -4430,18 +5855,42 @@
     period: 'today',
     customRange: null,
     filters: {
+      population: 'students',
       department: '',
       employee: '',
       status: '',
       location: ''
     },
     users: [],
+    staffUsers: [],
     records: [],
     filteredRecords: [],
     isLoading: false,
     initialized: false,
     reportGenerated: false
   };
+
+  function getReportsPopulationUsers() {
+    return reportsState.filters.population === 'staff'
+      ? (reportsState.staffUsers || [])
+      : (reportsState.users || []);
+  }
+
+  // Records are attributed to a population through the owning userId, so a
+  // Students report can never contain staff and vice versa.
+  function filterReportsRecordsByPopulation(records) {
+    var staffIds = new Set();
+    (reportsState.staffUsers || []).forEach(function(user) {
+      var id = getUserIdentifier(user);
+      if (id != null) staffIds.add(id);
+    });
+
+    var wantStaff = reportsState.filters.population === 'staff';
+    return (Array.isArray(records) ? records : []).filter(function(record) {
+      var isStaffRecord = record && record.userId != null && staffIds.has(String(record.userId));
+      return wantStaff ? isStaffRecord : !isStaffRecord;
+    });
+  }
 
   function getReportsDateRange(period, customRange) {
     return getDateRange(period, customRange);
@@ -4472,19 +5921,37 @@
     var db = getDb();
     if (!db) {
       reportsState.users = [];
+      reportsState.staffUsers = [];
       return;
     }
     try {
-      reportsState.users = await loadUsers();
+      // One scoped read feeds both report populations.
+      var reportsUsersSplit = setUsersSnapshot(await fetchScopedUsers());
+      reportsState.users = reportsUsersSplit.students;
+      reportsState.staffUsers = reportsUsersSplit.staff;
     } catch (e) {
       console.error('Reports: Failed to load users', e);
       reportsState.users = [];
+      reportsState.staffUsers = [];
     }
   }
 
-  function populateReportsDeptFilter(users) {
+  async function populateReportsDeptFilter(users) {
     var select = document.getElementById('reportsDeptFilter');
     if (!select) return;
+
+    const role = await window.getCurrentUserRole?.();
+    const isDivisionAdmin = role === 'divisionAdmin';
+
+    if (isDivisionAdmin) {
+      const scope = await window.getDivisionAdminScope?.();
+      if (scope && scope.department) {
+        var html = '<option value="' + escapeHtml(scope.department) + '">' + escapeHtml(scope.department) + ' 🔒</option>';
+        select.innerHTML = html;
+        select.disabled = true;
+        return;
+      }
+    }
 
     var depts = {};
     users.forEach(function(u) {
@@ -4524,7 +5991,7 @@
     select.innerHTML = html;
   }
   
-  function getReportsFilters() {
+  async function getReportsFilters() {
     var periodEl = null;
     var periodBtns = document.querySelectorAll('.reports-period-btn');
     periodBtns.forEach(function(btn) {
@@ -4533,23 +6000,38 @@
       }
     });
 
+    const role = await window.getCurrentUserRole?.();
+    const isDivisionAdmin = role === 'divisionAdmin';
+
     var deptEl = document.getElementById('reportsDeptFilter');
     var empEl = document.getElementById('reportsEmployeeFilter');
     var statusEl = document.getElementById('reportsStatusFilter');
     var locEl = document.getElementById('reportsLocationFilter');
 
+    let department = '';
+    if (isDivisionAdmin) {
+      const scope = await window.getDivisionAdminScope?.();
+      if (scope) department = scope.department;
+    } else {
+      department = deptEl ? deptEl.value : '';
+    }
+
     return {
       period: periodEl || 'today',
-      department: deptEl ? deptEl.value : '',
+      population: reportsState.filters.population,
+      department: department,
       employee: empEl ? empEl.value : '',
       status: statusEl ? statusEl.value : '',
       location: locEl ? locEl.value : ''
     };
   }
 
-  function applyReportsFilters() {
-    var filters = getReportsFilters();
-    var records = reportsState.records || [];
+  async function applyReportsFilters() {
+    var filters = await getReportsFilters();
+    reportsState.filters.population = filters.population;
+
+    // Population separation happens first so no cross-population leakage.
+    var records = filterReportsRecordsByPopulation(reportsState.records || []);
 
     var filtered = records.filter(function(r) {
       if (filters.department && r.dept !== filters.department) return false;
@@ -4578,6 +6060,7 @@
     if (!summaryText) return;
 
     var labels = [];
+    labels.push('Population: ' + (filters.population === 'staff' ? 'Staff' : 'Students'));
     if (filters.department) labels.push('Department: ' + filters.department);
     if (filters.employee) {
       var empSelect = document.getElementById('reportsEmployeeFilter');
@@ -4788,7 +6271,7 @@
     var endDateStr = formatDate(range.end);
     var generatedDate = new Date().toLocaleString();
 
-    var kpis = calculateReportsKpis(filtered, reportsState.users, filters);
+    var kpis = calculateReportsKpis(filtered, getReportsPopulationUsers(), filters);
 
     var filterDesc = '';
     if (filters.department) filterDesc += ' Department: ' + escapeHtml(filters.department);
@@ -4821,7 +6304,7 @@
       '</div>';
 
     // Department Performance
-    var deptStats = calculateDepartmentPerformance(filtered, reportsState.users, filters);
+    var deptStats = calculateDepartmentPerformance(filtered, getReportsPopulationUsers(), filters);
     html += '<div class="reports-department-section">' +
       '<h4 class="reports-section-title">Department Performance</h4>' +
       '<div class="reports-dept-table-wrap">' +
@@ -4913,6 +6396,7 @@
     var filters = getReportsFilters();
 
     var filterDesc = '';
+    filterDesc += ' Population: ' + (reportsState.filters.population === 'staff' ? 'Staff' : 'Students');
     if (filters.department) filterDesc += ' Department: ' + filters.department;
     if (filters.employee) filterDesc += ' Employee: ' + filters.employee;
     if (filters.status) filterDesc += ' Status: ' + filters.status;
@@ -4925,7 +6409,7 @@
       filters: filters,
       filterDesc: filterDesc,
       records: filtered,
-      users: reportsState.users
+      users: getReportsPopulationUsers()
     };
   }
 
@@ -4949,8 +6433,8 @@
     try {
       var data = getReportsExportData();
       var filtered = data.records;
-      var kpis = calculateReportsKpis(filtered, reportsState.users, data.filters);
-      var deptStats = calculateDepartmentPerformance(filtered, reportsState.users, data.filters);
+      var kpis = calculateReportsKpis(filtered, getReportsPopulationUsers(), data.filters);
+      var deptStats = calculateDepartmentPerformance(filtered, getReportsPopulationUsers(), data.filters);
 
       var wb = XLSX.utils.book_new();
 
@@ -5088,8 +6572,8 @@
     try {
       var data = getReportsExportData();
       var filtered = data.records;
-      var kpis = calculateReportsKpis(filtered, reportsState.users, data.filters);
-      var deptStats = calculateDepartmentPerformance(filtered, reportsState.users, data.filters);
+      var kpis = calculateReportsKpis(filtered, getReportsPopulationUsers(), data.filters);
+      var deptStats = calculateDepartmentPerformance(filtered, getReportsPopulationUsers(), data.filters);
 
       var doc = new window.jspdf.jsPDF();
 
@@ -5213,7 +6697,7 @@
     }
   }
 
-  async function generateReportsReport() {
+async function generateReportsReport() {
     var range = getReportsDateRange(reportsState.period, reportsState.customRange);
     var startDateStr = formatDate(range.start);
     var endDateStr = formatDate(range.end);
@@ -5233,22 +6717,40 @@
       '<div class="skeleton" style="height:20px;width:60%;margin-top:12px;"></div>' +
       '</div>';
 
-    var db = getDb();
-    if (!db) {
-      container.innerHTML = '<div class="reports-error-state"><div class="reports-error-icon">&#9888;</div><h4>Unable to load reports.</h4><p>Firebase connection not established. Please sign in and try again.</p><button id="reportsRetryBtn" class="btn btn-sm btn-outline">Try Again</button></div>';
-      return;
-    }
-
     try {
-      var snapshot = await db.collection('attendance')
-        .where('date', '>=', startDateStr)
-        .where('date', '<=', endDateStr)
-        .get();
+      var role = await window.getCurrentUserRole?.();
+      var isDivisionAdmin = role === 'divisionAdmin';
 
-      reportsState.records = snapshot.docs.map(function(doc) {
-        return { id: doc.id, ...doc.data() };
-      });
+      let records;
+      if (isDivisionAdmin) {
+        // Use API for Division Admin to enforce server-side scope
+        var result = await apiGetReports('attendance', {
+          startDate: startDateStr,
+          endDate: endDateStr
+        });
+        records = result.records || [];
+      } else {
+        var db = getDb();
+        if (!db) {
+          container.innerHTML = '<div class="reports-error-state"><div class="reports-error-icon">&#9888;</div><h4>Unable to load reports.</h4><p>Firebase connection not established. Please sign in and try again.</p><button id="reportsRetryBtn" class="btn btn-sm btn-outline">Try Again</button></div>';
+          return;
+        }
+        var scope = role === 'divisionAdmin' ? await window.getDivisionAdminScope?.() : null;
+        var query = db.collection('attendance')
+          .where('date', '>=', startDateStr)
+          .where('date', '<=', endDateStr);
+        if (scope) {
+          query = query.where('dept', '==', scope.department)
+                       .where('course', '==', scope.course)
+                       .where('division', '==', scope.division);
+        }
+        var snapshot = await query.get();
+        records = snapshot.docs.map(function(doc) {
+          return { id: doc.id, ...doc.data() };
+        });
+      }
 
+      reportsState.records = records;
       reportsState.reportGenerated = true;
       applyReportsFilters();
     } catch (e) {
@@ -5258,7 +6760,7 @@
     } finally {
       reportsState.isLoading = false;
      }
-   }
+  }
 
   function resetReportsFilters() {
     var periodBtns = document.querySelectorAll('.reports-period-btn');
@@ -5271,6 +6773,18 @@
     reportsState.period = 'today';
     reportsState.customRange = null;
     reportsState.reportGenerated = false;
+    reportsState.filters.population = 'students';
+    reportsState.filters.department = '';
+    reportsState.filters.employee = '';
+    reportsState.filters.status = '';
+    reportsState.filters.location = '';
+
+    var reportsPopToggle = document.getElementById('reportsPopulationToggle');
+    if (reportsPopToggle) {
+      reportsPopToggle.querySelectorAll('.population-toggle-btn').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-population') === 'students');
+      });
+    }
 
     var deptEl = document.getElementById('reportsDeptFilter');
     if (deptEl) deptEl.value = '';
@@ -5299,9 +6813,13 @@
 
     await loadReportsUsers();
 
-    if (reportsState.users.length > 0) {
-      populateReportsDeptFilter(reportsState.users);
-      populateReportsEmployeeFilter(reportsState.users);
+    // Render scope indicator for Division Admin
+    await renderDivisionAdminScopeIndicator();
+
+    var reportsPopulation = getReportsPopulationUsers();
+    if (reportsPopulation.length > 0) {
+      populateReportsDeptFilter(reportsPopulation);
+      populateReportsEmployeeFilter(reportsPopulation);
     }
 
     updateReportsDateIndicator();
@@ -5398,6 +6916,36 @@
     var locEl = document.getElementById('reportsLocationFilter');
     if (locEl) {
       locEl.addEventListener('change', function() {
+        applyReportsFilters();
+      });
+    }
+
+    var reportsPopulationToggle = document.getElementById('reportsPopulationToggle');
+    if (reportsPopulationToggle) {
+      reportsPopulationToggle.addEventListener('click', function(e) {
+        var btn = e.target.closest ? e.target.closest('.population-toggle-btn') : null;
+        if (!btn) return;
+        var population = btn.getAttribute('data-population');
+        if (!population || population === reportsState.filters.population) return;
+
+        reportsState.filters.population = population;
+        reportsState.filters.department = '';
+        reportsState.filters.employee = '';
+        reportsPopulationToggle.querySelectorAll('.population-toggle-btn').forEach(function(b) {
+          b.classList.toggle('active', b === btn);
+        });
+
+        // Department and employee options follow the selected population.
+        var deptEl2 = document.getElementById('reportsDeptFilter');
+        var empEl2 = document.getElementById('reportsEmployeeFilter');
+        if (deptEl2) deptEl2.value = '';
+        if (empEl2) empEl2.value = '';
+
+        var populationUsers = getReportsPopulationUsers();
+        if (populationUsers.length > 0) {
+          populateReportsDeptFilter(populationUsers);
+          populateReportsEmployeeFilter(populationUsers);
+        }
         applyReportsFilters();
       });
     }

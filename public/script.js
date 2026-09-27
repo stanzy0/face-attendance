@@ -11,16 +11,36 @@ function getErrorMessage(e) {
   return e.message || 'An unexpected error occurred';
 }
 function showStatus(msg, type = 'info') {
+  const color = {
+    error: '#ff6b6b',
+    success: '#2E8B57',
+    info: '#C8A646'
+  }[type] || '#C8A646';
+
+  const visibleSections = Array.from(document.querySelectorAll('.admin-section')).filter(function(section) {
+    return !section.hasAttribute('hidden') && !section.classList.contains('hidden');
+  });
+
+  if (visibleSections.length) {
+    const scopedIds = ['#staffStatus', '#status'];
+    for (const section of visibleSections) {
+      for (const id of scopedIds) {
+        const el = section.querySelector(id);
+        if (el) {
+          el.textContent = msg;
+          el.style.color = color;
+          return;
+        }
+      }
+    }
+  }
+
   const selectors = ['#status', '.status-card', '#adminStatus', '#matchCard'];
   for (const selector of selectors) {
     const el = document.querySelector(selector);
     if (el) {
       el.textContent = msg;
-      el.style.color = {
-        error: '#ff6b6b',
-        success: '#2E8B57',
-        info: '#C8A646'
-      }[type] || '#C8A646';
+      el.style.color = color;
       return;
     }
   }
@@ -36,6 +56,64 @@ function getDistanceMeters(lat1, lng1, lat2, lng2) {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c;
 }
+
+// Authoritative location state for the admin panel location cards.
+// verification.js overwrites this on verification.html with its own richer renderer.
+let adminLocationState = 'checking';
+let adminLocationDistance = null;
+
+function renderAdminLocationUI() {
+  const cards = [
+    { text: 'locationStatusText', details: 'locationDetails', distance: 'locationDistance', accuracy: 'locationAccuracy' },
+    { text: 'staffLocationStatusText', details: 'staffLocationDetails', distance: 'staffLocationDistance', accuracy: 'staffLocationAccuracy' }
+  ];
+
+  cards.forEach(function(ids) {
+    const textEl = document.getElementById(ids.text);
+    if (!textEl) return;
+
+    const detailsEl = document.getElementById(ids.details);
+    const distanceEl = document.getElementById(ids.distance);
+    const accuracyEl = document.getElementById(ids.accuracy);
+
+    textEl.classList.remove('inside', 'outside', 'error');
+
+    if (adminLocationState === 'verified') {
+      textEl.textContent = 'LOCATION VERIFIED - Inside office premises';
+      textEl.classList.add('inside');
+    } else if (adminLocationState === 'blocked') {
+      textEl.textContent = 'LOCATION BLOCKED - Outside office premises';
+      textEl.classList.add('outside');
+    } else {
+      textEl.textContent = 'Checking office location...';
+      textEl.classList.add('error');
+    }
+
+    if (detailsEl) {
+      detailsEl.style.display = adminLocationState === 'checking' ? 'none' : 'flex';
+    }
+
+    if (distanceEl) {
+      distanceEl.textContent = adminLocationDistance != null
+        ? adminLocationDistance.toFixed(0) + ' m'
+        : '--';
+    }
+
+    if (accuracyEl) {
+      accuracyEl.textContent = '';
+    }
+  });
+}
+
+function setLocationState(state, distance) {
+  adminLocationState = state;
+  if (distance != null) {
+    adminLocationDistance = distance;
+  }
+  renderAdminLocationUI();
+}
+
+window.setLocationState = setLocationState;
 
 // Location permission check
 async function verifyOfficeLocation() {
@@ -187,6 +265,33 @@ async function isDivisionAdmin() {
   return (await getCurrentUserRole()) === 'divisionAdmin';
 }
 
+async function isSO1() {
+  return (await getCurrentUserRole()) === 'so1';
+}
+
+async function isChiefClerk() {
+  return (await getCurrentUserRole()) === 'chiefClerk';
+}
+
+async function isStaffManager() {
+  const role = await getCurrentUserRole();
+  return ['superAdmin', 'so1', 'chiefClerk'].includes(role);
+}
+
+// Staff managers who may read Students but must never write them.
+// Super Admin and Division Admin keep their existing permissions.
+const STUDENT_READ_ONLY_ROLES = ['so1', 'chiefClerk'];
+
+async function isStudentReadOnly() {
+  const role = await getCurrentUserRole();
+  return STUDENT_READ_ONLY_ROLES.includes(role);
+}
+
+// Gate for every student create/update/delete action in the UI.
+async function canManageStudents() {
+  return !(await isStudentReadOnly());
+}
+
 async function getDivisionAdminScope() {
   const user = auth.currentUser;
   if (!user) return null;
@@ -282,6 +387,8 @@ async function deleteDivisionAdminAccount(uid) {
 window.getCurrentUserRole = getCurrentUserRole;
 window.isSuperAdmin = isSuperAdmin;
 window.isDivisionAdmin = isDivisionAdmin;
+window.isStudentReadOnly = isStudentReadOnly;
+window.canManageStudents = canManageStudents;
 window.getDivisionAdminScope = getDivisionAdminScope;
 window.createDivisionAdminAccount = createDivisionAdminAccount;
 window.updateDivisionAdminScope = updateDivisionAdminScope;
@@ -421,13 +528,87 @@ async function loadDailyReport(dateStr) {
 
 
 
-function clearRegisterForm() {
+async function clearRegisterForm() {
+  const role = getCurrentUserRole ? await getCurrentUserRole() : Promise.resolve(null);
+  const isDivAdmin = role === 'divisionAdmin';
+  
   ['regUserId','regName','regDept','regAppointment','regPhone','regRank','regCourse','regTerm','regDivision','regSyndicate'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.value = '';
+    if (!el) return;
+    if (isDivAdmin && el.getAttribute('data-scope-fixed') === 'true') {
+      return;
+    }
+    el.value = '';
   });
+  
+  const deptIndicator = document.getElementById('regDeptScopeIndicator');
+  const courseIndicator = document.getElementById('regCourseScopeIndicator');
+  const divisionIndicator = document.getElementById('regDivisionScopeIndicator');
+  if (deptIndicator) deptIndicator.style.display = 'none';
+  if (courseIndicator) courseIndicator.style.display = 'none';
+  if (divisionIndicator) divisionIndicator.style.display = 'none';
+  
+  if (isDivAdmin) {
+    await applyDivisionAdminScopeToForm();
+  }
   showStatus('Form cleared', 'info');
 }
+
+async function applyDivisionAdminScopeToForm() {
+  const role = await getCurrentUserRole();
+  if (role !== 'divisionAdmin') return false;
+
+  const scope = await getDivisionAdminScope();
+  if (!scope || !scope.department || !scope.course || !scope.division) {
+    console.warn('Division Admin scope incomplete');
+    return false;
+  }
+
+  const deptEl = document.getElementById('regDept');
+  const courseEl = document.getElementById('regCourse');
+  const divisionEl = document.getElementById('regDivision');
+  const termEl = document.getElementById('regTerm');
+  const syndicateEl = document.getElementById('regSyndicate');
+
+  if (deptEl) {
+    deptEl.value = scope.department;
+    deptEl.disabled = true;
+    deptEl.setAttribute('data-scope-fixed', 'true');
+  }
+  if (courseEl) {
+    courseEl.value = scope.course;
+    courseEl.disabled = true;
+    courseEl.setAttribute('data-scope-fixed', 'true');
+  }
+  if (divisionEl) {
+    divisionEl.value = scope.division;
+    divisionEl.disabled = true;
+    divisionEl.setAttribute('data-scope-fixed', 'true');
+  }
+
+  const courseData = COURSE_DATA[scope.course];
+  if (courseData && termEl) {
+    populateSelect(termEl, courseData.terms, 'Select Term');
+    termEl.disabled = false;
+  }
+
+  if (divisionEl && divisionEl.value && courseData && courseData.divisions[divisionEl.value] && syndicateEl) {
+    const syndicates = courseData.divisions[divisionEl.value].syndicates;
+    populateSelect(syndicateEl, syndicates, 'Select Syndicate');
+    syndicateEl.disabled = false;
+  }
+
+  const deptIndicator = document.getElementById('regDeptScopeIndicator');
+  const courseIndicator = document.getElementById('regCourseScopeIndicator');
+  const divisionIndicator = document.getElementById('regDivisionScopeIndicator');
+  if (deptIndicator) deptIndicator.style.display = 'flex';
+  if (courseIndicator) courseIndicator.style.display = 'flex';
+  if (divisionIndicator) divisionIndicator.style.display = 'flex';
+
+  return true;
+}
+
+window.applyDivisionAdminScopeToForm = applyDivisionAdminScopeToForm;
 
 // EXPORT FUNCTIONS
 function getRestrictedExcelBrandingRows(title) {
@@ -465,8 +646,8 @@ function drawRestrictedPdfPageHeader(doc, reportTitle) {
   doc.text('RESTRICTED', pageWidth / 2, 11, { align: 'center' });
 
   try {
-    doc.addImage('assets/afcsc logo.png', 'PNG', 14, 15, 16, 16);
-    doc.addImage('assets/army logo.png', 'PNG', pageWidth - 30, 15, 16, 16);
+    doc.addImage('assets/afcsc-logo.png', 'PNG', 14, 15, 16, 16);
+    doc.addImage('assets/army-logo.png', 'PNG', pageWidth - 30, 15, 16, 16);
   } catch (e) {
     // Logo loading failed
   }
@@ -680,6 +861,13 @@ function generatePdf(doc) {
 }
 
 async function registerFace() {
+  // Server-side authority: /api/admin/register-student rejects read-only roles.
+  // This guard stops the attempt before any camera/face work is done.
+  if (!(await canManageStudents())) {
+    showStatus('Your role has read-only access to Students', 'error');
+    return;
+  }
+
   const formData = {
     userId: document.getElementById('regUserId')?.value.trim(),
     name: document.getElementById('regName')?.value.trim(),
@@ -707,61 +895,226 @@ async function registerFace() {
   }
   
    try {
+     await verifyOfficeLocation();
+     showStatus('Scanning face...', 'info');
+     
+     const detections = await detectSingleFace();
+     if (!detections?.length) return showStatus('No face detected - try again', 'error');
+
+     const tempCanvas = document.createElement('canvas');
+     const tempCtx = tempCanvas.getContext('2d');
+     tempCanvas.width = 200;
+     tempCanvas.height = 200;
+     tempCtx.drawImage(video, 0, 0, 200, 200);
+     const faceImageDataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
+
+     const user = auth.currentUser;
+     if (!user) {
+       return showStatus('Authentication required. Please sign in again.', 'error');
+     }
+     const idToken = await user.getIdToken();
+
+     const apiPayload = {
+       userId: formData.userId,
+       name: formData.name,
+       rank: formData.rank,
+       term: formData.term,
+       division: formData.division,
+       syndicate: formData.syndicate,
+       appointment: formData.appointment,
+       phone: formData.phone,
+       faceDescriptor: Array.from(detections[0].descriptor),
+       faceImage: faceImageDataUrl,
+       registeredLocation: currentLocation
+     };
+
+     if (formData.course) apiPayload.course = formData.course;
+     if (formData.dept) apiPayload.dept = formData.dept;
+
+     const response = await fetch('/api/admin/register-student', {
+       method: 'POST',
+       headers: {
+         'Content-Type': 'application/json',
+         'Authorization': 'Bearer ' + idToken
+       },
+       body: JSON.stringify(apiPayload)
+     });
+
+     const result = await response.json();
+
+     if (!response.ok) {
+       return showStatus(result.error || 'Registration failed', 'error');
+     }
+
+     invalidateUsersCache();
+
+     var statusEl = document.getElementById('status');
+     if (statusEl) {
+       statusEl.innerHTML = '<div style="display:flex;flex-direction:column;gap:var(--space-2);text-align:center;">' +
+         '<div style="display:flex;align-items:center;justify-content:center;gap:var(--space-2);font-weight:600;">' +
+         '<span style="color:var(--color-success);">✓</span> Personnel Registered Successfully' +
+         '</div>' +
+         '<div style="font-size:var(--font-size-sm);color:var(--text-secondary);margin-top:var(--space-1);">' +
+         'Service No.: ' + result.userId + ' | Name: ' + result.name + ' | Dept: ' + result.dept +
+         '</div>' +
+         '<div style="display:flex;gap:var(--space-2);justify-content:center;margin-top:var(--space-3);flex-wrap:wrap;">' +
+         '<button onclick="clearRegisterForm()" class="btn btn-sm btn-outline">Register Another</button>' +
+         '<button onclick="goToEmployeesSection()" class="btn btn-sm btn-primary">View Personnel</button>' +
+         '</div>' +
+         '</div>';
+       statusEl.style.color = '#2E8B57';
+     }
+clearRegisterForm();
+    } catch (e) {
+      var errMsg = getErrorMessage(e);
+      showStatus(errMsg, 'error');
+    }
+  }
+
+async function registerStaff() {
+  const formData = {
+    userId: document.getElementById('regStaffUserId')?.value.trim(),
+    name: document.getElementById('regStaffName')?.value.trim(),
+    dept: document.getElementById('regStaffDept')?.value.trim(),
+    appointment: document.getElementById('regStaffAppointment')?.value || '',
+    status: document.getElementById('regStaffStatus')?.value || '',
+    phone: document.getElementById('regStaffPhone')?.value.trim() || ''
+  };
+
+  if (!formData.userId || !formData.name || !formData.dept || !formData.appointment || !formData.status) {
+    return showStatus('Fill Employee ID, Name, Department, Appointment, Status', 'error');
+  }
+  
+  // REQUIRE CAMERA STARTED FIRST
+  const staffVideo = document.getElementById('staffVideo');
+  if (!staffVideo || !staffVideo.srcObject) {
+    return showStatus('Start Camera first, then Register', 'error');
+  }
+  
+  try {
     await verifyOfficeLocation();
     showStatus('Scanning face...', 'info');
     
     const detections = await detectSingleFace();
     if (!detections?.length) return showStatus('No face detected - try again', 'error');
 
-    const existing = await db.collection('users').doc(formData.userId).get();
-    if (existing.exists) {
-      return showStatus('Service No. already registered. Choose a different Service No. or contact an administrator.', 'error');
-    }
-
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
     tempCanvas.width = 200;
     tempCanvas.height = 200;
-    tempCtx.drawImage(video, 0, 0, 200, 200);
+    tempCtx.drawImage(staffVideo, 0, 0, 200, 200);
     const faceImageDataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
-    
-     await db.collection('users').doc(formData.userId).set({
-       ...formData,
-       faceDescriptor: Array.from(detections[0].descriptor),
-       faceImage: faceImageDataUrl,
-       registeredLocation: currentLocation,
-       registeredAt: firebase.firestore.FieldValue.serverTimestamp()
-     });
 
-     invalidateUsersCache();
+    const user = auth.currentUser;
+    if (!user) {
+      return showStatus('Authentication required. Please sign in again.', 'error');
+    }
+    const idToken = await user.getIdToken();
 
-    var statusEl = document.getElementById('status');
+    const apiPayload = {
+      userId: formData.userId,
+      name: formData.name,
+      dept: formData.dept,
+      appointment: formData.appointment,
+      status: formData.status,
+      phone: formData.phone,
+      faceDescriptor: Array.from(detections[0].descriptor),
+      faceImage: faceImageDataUrl,
+      registeredLocation: currentLocation
+    };
+
+    const response = await fetch('/api/admin/staff', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + idToken
+      },
+      body: JSON.stringify(apiPayload)
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      return showStatus(result.error || 'Registration failed', 'error');
+    }
+
+    invalidateUsersCache();
+
+    var statusEl = document.getElementById('staffStatus');
     if (statusEl) {
       statusEl.innerHTML = '<div style="display:flex;flex-direction:column;gap:var(--space-2);text-align:center;">' +
         '<div style="display:flex;align-items:center;justify-content:center;gap:var(--space-2);font-weight:600;">' +
-        '<span style="color:var(--color-success);">✓</span> Personnel Registered Successfully' +
+        '<span style="color:var(--color-success);">✓</span> Staff Registered Successfully' +
         '</div>' +
         '<div style="font-size:var(--font-size-sm);color:var(--text-secondary);margin-top:var(--space-1);">' +
-        'Service No.: ' + formData.userId + ' | Name: ' + formData.name + ' | Dept: ' + formData.dept +
+        'Employee ID: ' + result.userId + ' | Name: ' + result.name + ' | Dept: ' + result.dept +
         '</div>' +
         '<div style="display:flex;gap:var(--space-2);justify-content:center;margin-top:var(--space-3);flex-wrap:wrap;">' +
-        '<button onclick="clearRegisterForm()" class="btn btn-sm btn-outline">Register Another</button>' +
-        '<button onclick="goToEmployeesSection()" class="btn btn-sm btn-primary">View Personnel</button>' +
+        '<button onclick="clearRegisterStaffForm()" class="btn btn-sm btn-outline">Register Another</button>' +
+        '<button onclick="goToStaffSection()" class="btn btn-sm btn-primary">View Staff</button>' +
         '</div>' +
         '</div>';
       statusEl.style.color = '#2E8B57';
     }
-    clearRegisterForm();
+    clearRegisterStaffForm();
   } catch (e) {
     var errMsg = getErrorMessage(e);
     showStatus(errMsg, 'error');
   }
 }
 
-function goToEmployeesSection() {
-  var navItem = document.querySelector('.admin-nav-item[data-section="employees"]');
+function clearRegisterStaffForm() {
+  ['regStaffUserId','regStaffName','regStaffDept','regStaffAppointment','regStaffStatus','regStaffPhone'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  showStatus('Form cleared', 'info');
+}
+
+function goToStaffSection() {
+  var navItem = document.querySelector('.admin-nav-item[data-section="staff"]');
   if (navItem) {
     navItem.click();
+  }
+}
+
+function showStaffRegisterSection() {
+  var section = document.getElementById('section-register-staff');
+  if (section) {
+    var sections = document.querySelectorAll('.admin-section');
+    sections.forEach(function(sec) {
+      if (sec === section) {
+        sec.removeAttribute('hidden');
+        sec.classList.remove('hidden');
+      } else {
+        sec.setAttribute('hidden', 'hidden');
+        sec.classList.add('hidden');
+      }
+    });
+  }
+
+  document.body.style.overflow = '';
+
+  var navItems = document.querySelectorAll('.admin-nav-item[data-section]');
+  navItems.forEach(function(n) { n.classList.remove('active'); });
+
+  var titleEl = document.getElementById('adminPageTitle');
+  if (titleEl) titleEl.textContent = 'Register Staff';
+  var subtitleEl = document.getElementById('adminPageSubtitle');
+  if (subtitleEl) subtitleEl.textContent = 'Register new staff with biometric data';
+
+  var statusEl = document.getElementById('staffStatus');
+  if (statusEl) {
+    statusEl.innerHTML = '';
+    statusEl.style.color = '';
+  }
+
+  var staffVideo = document.getElementById('staffVideo');
+  if (staffVideo && staffVideo.srcObject) {
+    var staffScanBtn = document.getElementById('staffScanBtn');
+    if (staffScanBtn) staffScanBtn.disabled = false;
+    var registerStaffBtnForm = document.getElementById('registerStaffBtnForm');
+    if (registerStaffBtnForm) registerStaffBtnForm.disabled = false;
   }
 }
 
@@ -832,6 +1185,71 @@ async function startCamera() {
     };
   } catch (e) {
     console.error('Camera error:', e.name, e.message, e);
+
+    if (e.name === 'NotAllowedError') {
+      showStatus('Camera permission was denied. Allow camera access in your browser.', 'error');
+    } else if (e.name === 'NotFoundError') {
+      showStatus('No camera was found on this device.', 'error');
+    } else if (e.name === 'NotReadableError') {
+      showStatus('Camera is being used by another application.', 'error');
+    } else if (e.name === 'OverconstrainedError') {
+      showStatus('The requested camera settings are not supported.', 'error');
+    } else if (e.name === 'SecurityError') {
+      showStatus('Camera access was blocked by browser security settings.', 'error');
+    } else if (e.name === 'TypeError') {
+      showStatus('Camera API not available. Ensure you are using HTTPS or localhost.', 'error');
+    } else {
+      showStatus('Unable to start camera: ' + (e.message || e.name), 'error');
+    }
+  }
+}
+
+async function startStaffCamera() {
+  try {
+    const staffVideo = document.getElementById('staffVideo');
+
+    if (!staffVideo || !faceapi) {
+      return showStatus('Camera/Face-api not ready', 'error');
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showStatus(
+        'Camera access is not available in this browser/page. Please use HTTPS and a supported browser.',
+        'error'
+      );
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'user',
+        width: { ideal: 640 },
+        height: { ideal: 480 }
+      },
+      audio: false
+    });
+
+    staffVideo.srcObject = stream;
+
+    staffVideo.onloadedmetadata = () => {
+      const staffCanvas = faceapi.createCanvasFromMedia(staffVideo);
+      staffVideo.parentNode.append(staffCanvas);
+      faceapi.matchDimensions(staffCanvas, {
+        width: staffVideo.videoWidth,
+        height: staffVideo.videoHeight
+      });
+
+      const staffScanBtn = document.getElementById('staffScanBtn');
+      if (staffScanBtn) staffScanBtn.disabled = false;
+
+      const registerStaffBtnForm = document.getElementById('registerStaffBtnForm');
+      if (registerStaffBtnForm) registerStaffBtnForm.disabled = false;
+
+      showStatus('Camera ready - Scan Face', 'success');
+    };
+
+  } catch (e) {
+    console.error('Staff Camera error:', e.name, e.message, e);
 
     if (e.name === 'NotAllowedError') {
       showStatus('Camera permission was denied. Allow camera access in your browser.', 'error');
@@ -1166,6 +1584,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('Division Admin scope:', scope);
         showStatus('Division Admin signed in - Restricted access', 'success');
         if (adminStatus) adminStatus.textContent = 'Division Admin - ' + (scope ? scope.division : 'Restricted');
+        await applyDivisionAdminScopeToForm();
       } else {
         showStatus('Admin signed in ✓ Panel ready', 'success');
         if (adminStatus) adminStatus.textContent = 'Signed in - Dashboard active';
@@ -1173,7 +1592,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (signOutBtn) signOutBtn.style.display = 'inline-block';
       if (panel) panel.style.display = 'block';
-      if (regBtn) regBtn.disabled = false;
+      if (regBtn) {
+        if (await isStudentReadOnly()) {
+          regBtn.style.display = 'none';
+        } else {
+          regBtn.disabled = false;
+        }
+      }
       loadAttendanceRecords();
     } else {
       showStatus('Not signed in - Login required', 'info');
@@ -1212,7 +1637,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       adminSignOutBtn: adminSignOut,
       clearBtn: clearRegisterForm,
       regBtn: registerFace,
-refreshBtn: () => {
+      registerStaffBtn: showStaffRegisterSection,
+      staffStartBtn: startStaffCamera,
+      staffScanBtn: registerStaff,
+      registerStaffBtnForm: registerStaff,
+      clearStaffBtnForm: clearRegisterStaffForm,
+      cancelStaffRegisterBtn: goToStaffSection,
+      refreshBtn: () => {
   reportMode = false;
   document.getElementById('dailyReportBtn')?.classList.remove('active');
   document.getElementById('absenceStats') && (document.getElementById('absenceStats').style.display = 'none');

@@ -1,11 +1,19 @@
 const admin = require('firebase-admin');
 
+function cleanEnv(value) {
+  return (value || '').replace(/^"|"$/g, '').replace(/\\n/g, '\n');
+}
+
+const projectId = cleanEnv(process.env.FIREBASE_PROJECT_ID);
+const clientEmail = cleanEnv(process.env.FIREBASE_CLIENT_EMAIL);
+const privateKey = cleanEnv(process.env.FIREBASE_PRIVATE_KEY);
+
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+      projectId,
+      clientEmail,
+      privateKey
     })
   });
 }
@@ -49,7 +57,12 @@ async function verifySuperAdmin(authHeader) {
   }
 
   const callerDoc = await db.collection('users').doc(decodedToken.uid).get();
-  if (!callerDoc.exists || callerDoc.data().role !== 'superAdmin') {
+  if (!callerDoc.exists) {
+    return { error: 'Forbidden', status: 403 };
+  }
+  const callerData = callerDoc.data();
+  const callerRole = (callerData && (callerData['role '] || callerData.role)) || null;
+  if (callerRole !== 'superAdmin') {
     return { error: 'Forbidden', status: 403 };
   }
 

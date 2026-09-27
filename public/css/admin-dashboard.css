@@ -535,6 +535,119 @@ body {
   letter-spacing: 0.05em;
 }
 
+/* Overview: separate STUDENTS / STAFF groups */
+.overview-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.overview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.overview-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.overview-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: var(--space-1) 0 0;
+}
+
+.overview-date-indicator {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  background: var(--bg-surface);
+  white-space: nowrap;
+}
+
+.overview-group {
+  display: block;
+}
+
+.overview-group-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.overview-group-title {
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin: 0;
+}
+
+.overview-group-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.overview-group .kpi-grid {
+  margin-bottom: 0;
+}
+
+.overview-restricted-note {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  padding: var(--space-4);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius-md);
+  background: var(--bg-surface);
+}
+
+/* Students / Staff population toggle */
+.population-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.population-toggle-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  transition: background 200ms ease, color 200ms ease;
+}
+
+.population-toggle-btn + .population-toggle-btn {
+  border-left: 1px solid var(--border-color);
+}
+
+.population-toggle-btn:hover {
+  color: var(--text-primary);
+}
+
+.population-toggle-btn.active {
+  background: var(--color-accent, #C8A646);
+  color: #14180f;
+  font-weight: 600;
+}
+
 .kpi-trend {
   display: inline-flex;
   align-items: center;
@@ -2037,6 +2150,15 @@ body {
   margin-bottom: var(--space-3);
 }
 
+.camera-container {
+  position: relative;
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+  background-color: #000;
+  aspect-ratio: 4/3;
+  margin-bottom: var(--space-3);
+}
+
 .camera-preview {
   width: 100%;
   height: 100%;
@@ -2147,6 +2269,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+}
+
+.attendance-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .attendance-title {

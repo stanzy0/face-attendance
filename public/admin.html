@@ -22,7 +22,7 @@
 <script defer src="firebase-config.js"></script>
 <script defer src="admin-helpers.js"></script>
 <!-- Stylesheets -->
-<link rel="icon" href="assets/afcsc logo.png" type="image/png" />
+<link rel="icon" href="assets/afcsc-logo.png" type="image/png" />
 <link rel="stylesheet" href="css/absence-styles.css">
 <link rel="stylesheet" href="css/theme.css">
 <link rel="stylesheet" href="css/components.css">
@@ -39,9 +39,9 @@
       <!-- Left Panel: Login Form -->
       <div class="admin-login-left">
         <a href="landing.html" class="admin-login-brand" aria-label="BioTrack Home">
-          <img src="assets/afcsc logo.png" alt="AFCSC" class="admin-login-brand-img" />
+          <img src="assets/afcsc-logo.png" alt="AFCSC" class="admin-login-brand-img" />
           <span class="admin-login-brand-text">BioTrack</span>
-          <img src="assets/army logo.png" alt="Army" class="admin-login-brand-img" />
+          <img src="assets/army-logo.png" alt="Army" class="admin-login-brand-img" />
         </a>
 
         <h1 class="admin-login-heading">Welcome back.</h1>
@@ -131,9 +131,9 @@
   <div id="adminAuthLoading" class="admin-auth-loading">
      <div class="admin-auth-loading-content">
        <div class="admin-login-brand">
-         <img src="assets/afcsc logo.png" alt="AFCSC" class="admin-login-brand-img" />
+         <img src="assets/afcsc-logo.png" alt="AFCSC" class="admin-login-brand-img" />
          <span class="admin-login-brand-text">BioTrack</span>
-         <img src="assets/army logo.png" alt="Army" class="admin-login-brand-img" />
+         <img src="assets/army-logo.png" alt="Army" class="admin-login-brand-img" />
        </div>
        <div class="auth-loading-spinner">
          <span class="auth-loading-dot"></span>
@@ -150,7 +150,7 @@
     <!-- Sidebar -->
     <aside class="admin-sidebar" id="adminSidebar">
       <div class="admin-sidebar-brand">
-        <img src="assets/afcsc logo.png" alt="AFCSC" class="admin-sidebar-brand-img" />
+        <img src="assets/afcsc-logo.png" alt="AFCSC" class="admin-sidebar-brand-img" />
         <div class="admin-sidebar-brand-text">
           <div class="admin-sidebar-brand-name">BioTrack</div>
           <div class="admin-sidebar-brand-tag">Admin Console</div>
@@ -174,6 +174,10 @@
         <a href="#" class="admin-nav-item" data-section="employees">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Students
+        </a>
+        <a href="#" class="admin-nav-item admin-nav-staff-manager-only" data-section="staff" style="display:none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Staff
         </a>
 
         <div class="admin-nav-section" style="margin-top:var(--space-4);">Management</div>
@@ -220,9 +224,9 @@
       <header class="admin-header">
         <div>
           <div class="admin-header-brand">
-            <img src="assets/afcsc logo.png" alt="AFCSC" class="admin-header-logo" />
+            <img src="assets/afcsc-logo.png" alt="AFCSC" class="admin-header-logo" />
             <span class="admin-header-brand-text">BioTrack</span>
-            <img src="assets/army logo.png" alt="Army" class="admin-header-logo" />
+            <img src="assets/army-logo.png" alt="Army" class="admin-header-logo" />
           </div>
           <h1 class="admin-header-title" id="adminPageTitle">Dashboard</h1>
           <p class="admin-header-subtitle" id="adminPageSubtitle">Overview of biometric attendance activity</p>
@@ -237,10 +241,10 @@
         </div>
       </header>
 
-      <div class="admin-content">
-         <!-- Dashboard Section -->
-         <section id="section-dashboard" class="admin-section">
-         </section>
+       <div class="admin-content">
+          <!-- Dashboard Section -->
+          <section id="section-dashboard" class="admin-section">
+          </section>
 
          <!-- Analytics Section -->
          <section id="section-analytics" class="admin-section hidden" hidden>
@@ -275,6 +279,13 @@
                   <span class="text-muted">to</span>
                   <input type="date" id="analyticsEndDate" class="form-input" style="width:auto;" />
                   <button id="analyticsApplyCustom" class="btn btn-sm btn-primary">Apply</button>
+                </div>
+              </div>
+              <div class="analytics-filter-group">
+                <label class="analytics-filter-label">Population</label>
+                <div class="population-toggle" id="analyticsPopulationToggle">
+                  <button type="button" class="population-toggle-btn active" data-population="students">Students</button>
+                  <button type="button" class="population-toggle-btn" data-population="staff">Staff</button>
                 </div>
               </div>
               <div class="analytics-filter-group">
@@ -354,6 +365,12 @@
                 <div class="attendance-header-title-group">
                   <h4 class="attendance-title">Attendance Management</h4>
                   <p class="attendance-subtitle">Monitor, review and manage biometric attendance activity</p>
+                </div>
+                <div class="attendance-header-actions">
+                  <div class="population-toggle" id="attendancePopulationToggle">
+                    <button type="button" class="population-toggle-btn active" data-population="students">Students</button>
+                    <button type="button" class="population-toggle-btn" data-population="staff">Staff</button>
+                  </div>
                 </div>
                 <div class="attendance-date-indicator">
                   <span id="attendanceDateIndicator" class="attendance-date-text">Today</span>
@@ -464,10 +481,24 @@
                 <h4 class="employees-title">Personnel Directory</h4>
                 <p class="employees-subtitle" id="employeeCount">Loading personnel...</p>
               </div>
+              <div id="divisionAdminScopeIndicator" style="display:none; margin-bottom: var(--space-3);"></div>
               <div class="employees-controls">
-                <input type="text" id="employeeSearch" class="form-input" placeholder="Search ID, Name, Dept..." style="width:200px;">
+                <input type="text" id="employeeSearch" class="form-input" placeholder="Search ID, Name, Rank, Phone..." style="width:200px;">
                 <select id="employeeDeptFilter" class="form-input" style="width:auto;">
                   <option value="">All Departments</option>
+                </select>
+                <select id="employeeTermFilter" class="form-input" style="width:auto;">
+                  <option value="">All Terms</option>
+                </select>
+                <select id="employeeSyndicateFilter" class="form-input" style="width:auto;">
+                  <option value="">All Syndicates</option>
+                </select>
+                <select id="employeeStatusFilter" class="form-input" style="width:auto;">
+                  <option value="">All Status</option>
+                  <option value="Student">Student</option>
+                  <option value="Staff">Staff</option>
+                  <option value="Instructor">Instructor</option>
+                  <option value="Other">Other</option>
                 </select>
               </div>
             </div>
@@ -578,6 +609,85 @@
               </div>
             </div>
 
+          <!-- Edit Employee Modal -->
+          <div id="editEmployeeModal" class="modal hidden" hidden>
+            <div class="modal-backdrop" data-close="editEmployeeModal"></div>
+            <div class="modal-content">
+              <div class="modal-header">
+                <h4 class="modal-title">Edit Student</h4>
+                <button class="modal-close" data-close="editEmployeeModal" aria-label="Close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <input type="hidden" id="editEmployeeId" />
+                <div class="form-group">
+                  <label class="form-label" for="editEmployeeName">Full Name</label>
+                  <input id="editEmployeeName" type="text" class="form-input" placeholder="Full Name" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editEmployeeRank">Rank</label>
+                  <select id="editEmployeeRank" class="form-input">
+                    <option value="">Select Rank</option>
+                    <option value="Maj">Maj</option>
+                    <option value="Lt Col">Lt Col</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editEmployeeDept">Department</label>
+                  <select id="editEmployeeDept" class="form-input">
+                    <option value="">Select Department</option>
+                    <option value="Department of Land Warfare">Department of Land Warfare</option>
+                    <option value="Department of Maritime Warfare">Department of Maritime Warfare</option>
+                    <option value="Department of Air Warfare">Department of Air Warfare</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editEmployeeCourse">Course</label>
+                  <select id="editEmployeeCourse" class="form-input">
+                    <option value="">Select Course</option>
+                    <option value="Senior Course">Senior Course</option>
+                    <option value="Junior Course">Junior Course</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editEmployeeDivision">Division</label>
+                  <select id="editEmployeeDivision" class="form-input" disabled>
+                    <option value="">Select Division</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editEmployeeTerm">Term</label>
+                  <select id="editEmployeeTerm" class="form-input" disabled>
+                    <option value="">Select Term</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editEmployeeSyndicate">Syndicate</label>
+                  <select id="editEmployeeSyndicate" class="form-input" disabled>
+                    <option value="">Select Syndicate</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editEmployeeAppointment">Status</label>
+                  <select id="editEmployeeAppointment" class="form-input">
+                    <option value="">Select Status</option>
+                    <option value="Student">Student</option>
+                    <option value="Staff">Staff</option>
+                    <option value="Instructor">Instructor</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editEmployeePhone">Phone Number</label>
+                  <input id="editEmployeePhone" type="tel" class="form-input" placeholder="Phone Number" autocomplete="off" />
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" id="editEmployeeCancelBtn" class="btn btn-outline btn-sm" data-close="editEmployeeModal">Cancel</button>
+                <button type="button" id="editEmployeeSaveBtn" class="btn btn-accent btn-sm">Save Changes</button>
+              </div>
+            </div>
+          </div>
+
           <!-- Register Employee Section -->
            <section id="section-register" class="admin-section hidden" hidden>
             <div class="card panel-grid">
@@ -610,6 +720,10 @@
                     <option value="Senior Course">Senior Course</option>
                     <option value="Junior Course">Junior Course</option>
                   </select>
+                  <div id="regCourseScopeIndicator" class="scope-fixed-indicator" style="display:none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+                    <span>Fixed by Division Admin scope</span>
+                  </div>
                 </div>
 
                 <div class="form-group">
@@ -624,6 +738,10 @@
                   <select id="regDivision" class="form-input" disabled>
                     <option value="">Select Division</option>
                   </select>
+                  <div id="regDivisionScopeIndicator" class="scope-fixed-indicator" style="display:none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+                    <span>Fixed by Division Admin scope</span>
+                  </div>
                 </div>
 
                 <div class="form-group">
@@ -641,6 +759,10 @@
                     <option value="Department of Maritime Warfare">Department of Maritime Warfare</option>
                     <option value="Department of Air Warfare">Department of Air Warfare</option>
                   </select>
+                  <div id="regDeptScopeIndicator" class="scope-fixed-indicator" style="display:none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+                    <span>Fixed by Division Admin scope</span>
+                  </div>
                 </div>
 
                 <div class="form-group">
@@ -688,22 +810,273 @@
                <div class="status-card mt-3" id="matchCard"><div id="status">Loading system... (Camera access required for attendance)</div></div>
              </div>
            </div>
-         </section>
+</section>
 
-        <!-- Reports Section -->
+          <!-- Staff Section -->
+          <section id="section-staff" class="admin-section hidden" hidden>
+            <div class="employees-header">
+              <div class="employees-title-group">
+                <h4 class="employees-title">Staff / Employee Directory</h4>
+                <p class="employees-subtitle" id="staffCount">Loading staff...</p>
+              </div>
+              <div class="employees-controls">
+                <input type="text" id="staffSearch" class="form-input" placeholder="Search ID, Name, Appointment, Phone..." style="width:200px;">
+                <select id="staffDeptFilter" class="form-input" style="width:auto;">
+                  <option value="">All Departments</option>
+                </select>
+                <select id="staffAppointmentFilter" class="form-input" style="width:auto;">
+                  <option value="">All Appointments</option>
+                </select>
+                <button id="registerStaffBtn" class="btn btn-accent btn-sm admin-nav-staff-manager-only" style="display:none;" onclick="showStaffRegisterSection()">+ Register Staff</button>
+              </div>
+            </div>
+            <div id="staffTable" class="table-container"></div>
+          </section>
+
+          <!-- Staff Profile Modal -->
+          <div id="staffProfileModal" class="modal hidden" hidden>
+            <div class="modal-backdrop" data-close="staffProfileModal"></div>
+            <div class="modal-content">
+              <div class="modal-header">
+                <h4 class="modal-title">Staff Profile</h4>
+                <button class="modal-close" data-close="staffProfileModal" aria-label="Close">&times;</button>
+              </div>
+              <div class="modal-body" id="staffProfileBody">
+                <div class="profile-layout">
+                  <div class="profile-photo-section">
+                    <img id="staffProfilePhotoImg" src="" alt="Registered Photo" class="profile-photo-img" style="display:none;" onerror="this.style.display='none';document.getElementById('staffProfilePhotoPlaceholder').style.display='flex';">
+                    <div class="profile-photo-placeholder" id="staffProfilePhotoPlaceholder">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:48px;height:48px;opacity:0.5;">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                        <circle cx="12" cy="13" r="4"/>
+                      </svg>
+                      <span>NO REGISTERED PHOTO</span>
+                    </div>
+                    <div class="profile-photo-status" id="staffProfilePhotoStatus">
+                      <span class="status-dot" style="background-color:var(--text-muted);width:6px;height:6px;border-radius:50%;flex-shrink:0;"></span> NO PHOTO
+                    </div>
+                  </div>
+                  <div class="profile-grid">
+                    <div class="profile-group">
+                      <label class="profile-label">Employee ID</label>
+                      <span class="profile-value" id="staffProfileEmployeeId"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Full Name</label>
+                      <span class="profile-value" id="staffProfileName"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Department</label>
+                      <span class="profile-value" id="staffProfileDept"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Appointment</label>
+                      <span class="profile-value" id="staffProfileAppointment"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Status</label>
+                      <span class="profile-value" id="staffProfileStatus"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Phone</label>
+                      <span class="profile-value" id="staffProfilePhone"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Registered Date</label>
+                      <span class="profile-value" id="staffProfileRegisteredAt"></span>
+                    </div>
+                    <div class="profile-group">
+                      <label class="profile-label">Face Registration</label>
+                      <span class="profile-value" id="staffProfileFaceStatus"></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" id="staffProfileCloseBtn" class="btn btn-outline btn-sm" data-close="staffProfileModal">Close</button>
+                <button type="button" id="staffProfileDeleteBtn" class="btn btn-danger btn-sm" data-action="delete-staff">Delete Staff</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Staff Delete Confirmation Overlay -->
+          <div id="staffDeleteConfirmOverlay" class="delete-confirm-overlay hidden" hidden>
+            <div class="delete-confirm-content">
+              <h3 class="delete-confirm-title">Delete Staff?</h3>
+              <p class="delete-confirm-message">
+                Are you sure you want to delete <span id="staffDeleteConfirmName" class="delete-confirm-name"></span>?
+              </p>
+              <p class="delete-confirm-id">Employee ID: <span id="staffDeleteConfirmId"></span></p>
+              <p class="delete-confirm-appointment">Appointment: <span id="staffDeleteConfirmAppointment"></span></p>
+              <p class="delete-confirm-dept">Department: <span id="staffDeleteConfirmDept"></span></p>
+              <p class="delete-confirm-warning">
+                <strong>WARNING:</strong><br>
+                This will permanently delete the staff member's registration, biometric data, and <strong>ALL attendance records</strong> associated with this staff member.
+              </p>
+              <div class="delete-confirm-actions">
+                <button type="button" id="staffDeleteConfirmCancel" class="btn btn-outline btn-sm">Cancel</button>
+                <button type="button" id="staffDeleteConfirmBtn" class="btn btn-danger btn-sm">Delete Staff</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Edit Staff Modal -->
+          <div id="editStaffModal" class="modal hidden" hidden>
+            <div class="modal-backdrop" data-close="editStaffModal"></div>
+            <div class="modal-content">
+              <div class="modal-header">
+                <h4 class="modal-title">Edit Staff</h4>
+                <button class="modal-close" data-close="editStaffModal" aria-label="Close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <input type="hidden" id="editStaffEmployeeId" />
+                <div class="form-group">
+                  <label class="form-label" for="editStaffEmployeeName">Full Name</label>
+                  <input id="editStaffEmployeeName" type="text" class="form-input" placeholder="Full Name" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editStaffEmployeeDept">Department</label>
+                  <select id="editStaffEmployeeDept" class="form-input">
+                    <option value="">Select Department</option>
+                    <option value="Department of Land Warfare">Department of Land Warfare</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editStaffEmployeeAppointment">Appointment</label>
+                  <select id="editStaffEmployeeAppointment" class="form-input">
+                    <option value="">Select Appointment</option>
+                    <option value="Cleaner">Cleaner</option>
+                    <option value="Receptionist">Receptionist</option>
+                    <option value="ITC">ITC</option>
+                    <option value="Guidiner">Guidiner</option>
+                    <option value="Electrician">Electrician</option>
+                    <option value="Clerk">Clerk</option>
+                    <option value="Driver">Driver</option>
+                    <option value="Mechanic">Mechanic</option>
+                    <option value="Secretary">Secretary</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editStaffEmployeeStatus">Status</label>
+                  <select id="editStaffEmployeeStatus" class="form-input">
+                    <option value="">Select Status</option>
+                    <option value="Staff">Staff</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editStaffEmployeePhone">Phone Number</label>
+                  <input id="editStaffEmployeePhone" type="tel" class="form-input" placeholder="Phone Number" autocomplete="off" />
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" id="editStaffCancelBtn" class="btn btn-outline btn-sm" data-close="editStaffModal">Cancel</button>
+                <button type="button" id="editStaffSaveBtn" class="btn btn-accent btn-sm">Save Changes</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Register Staff Section -->
+          <section id="section-register-staff" class="admin-section hidden" hidden>
+            <div class="card panel-grid">
+              <div>
+                <h4 class="card-title">EMPLOYEE INFORMATION</h4>
+
+                <div class="form-group">
+                  <label class="form-label" for="regStaffUserId">Employee ID</label>
+                  <input id="regStaffUserId" type="text" class="form-input" placeholder="Enter Employee ID" maxlength="8" autocomplete="off" />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="regStaffName">Full Name</label>
+                  <input id="regStaffName" type="text" class="form-input" placeholder="Enter Full Name" autocomplete="off" />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="regStaffDept">Department</label>
+                  <select id="regStaffDept" class="form-input">
+                    <option value="">Select Department</option>
+                    <option value="Department of Land Warfare">Department of Land Warfare</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="regStaffAppointment">Appointment</label>
+                  <select id="regStaffAppointment" class="form-input">
+                    <option value="">Select Appointment</option>
+                    <option value="Cleaner">Cleaner</option>
+                    <option value="Receptionist">Receptionist</option>
+                    <option value="ITC">ITC</option>
+                    <option value="Guidiner">Guidiner</option>
+                    <option value="Electrician">Electrician</option>
+                    <option value="Clerk">Clerk</option>
+                    <option value="Driver">Driver</option>
+                    <option value="Mechanic">Mechanic</option>
+                    <option value="Secretary">Secretary</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="regStaffStatus">Status</label>
+                  <select id="regStaffStatus" class="form-input">
+                    <option value="">Select Status</option>
+                    <option value="Staff">Staff</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="regStaffPhone">Phone Number</label>
+                  <input id="regStaffPhone" type="tel" class="form-input" placeholder="Phone Number" autocomplete="off" />
+                </div>
+              </div>
+              <div>
+                <h4 class="card-title">Biometric Registration</h4>
+
+                <div class="camera-container">
+                  <video id="staffVideo" autoplay muted playsinline class="camera-preview"></video>
+                  <div class="camera-overlay" id="staffCameraOverlay">
+                    <div class="camera-guide"></div>
+                    <div class="camera-status-text" id="staffCameraStatusText">Waiting for camera</div>
+                  </div>
+                </div>
+                <div class="flex flex-wrap gap-3 mt-3">
+                  <button id="staffStartBtn" class="btn btn-primary">Start Camera</button>
+                  <button id="staffScanBtn" class="btn btn-accent" disabled>Scan Face</button>
+                </div>
+                <div class="flex flex-wrap gap-3 mt-3">
+                  <button id="registerStaffBtnForm" class="btn btn-accent" disabled onclick="registerStaff()">Register Staff</button>
+                  <button id="clearStaffBtnForm" class="btn btn-outline" onclick="clearRegisterStaffForm()">Clear</button>
+                  <button id="cancelStaffRegisterBtn" class="btn btn-outline" onclick="goToStaffSection()">Cancel</button>
+                </div>
+                <div class="location-status card mt-3" id="staffLocationStatus">
+                  <div class="location-status-title">GPS Location Status</div>
+                  <div class="location-status-text" id="staffLocationStatusText">Checking office location...</div>
+                  <div class="location-details" id="staffLocationDetails" style="display:none;">
+                    <span class="location-accuracy" id="staffLocationAccuracy"></span>
+                    <span class="location-distance" id="staffLocationDistance"></span>
+                  </div>
+                </div>
+                <div class="status-card mt-3" id="staffMatchCard"><div id="staffStatus">Loading system... (Camera access required for registration)</div></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Reports Section -->
          <section id="section-reports" class="admin-section hidden" hidden>
            <div class="reports-workspace">
 
-             <!-- Page Header -->
-             <div class="reports-header">
-               <div class="reports-header-title-group">
-                 <h3 class="reports-title">Reports &amp; Export Center</h3>
-                 <p class="reports-subtitle">Generate, review and export attendance reports.</p>
-               </div>
-               <div class="reports-date-indicator" id="reportsDateIndicator">Today</div>
-             </div>
+<!-- Page Header -->
+              <div class="reports-header">
+                <div class="reports-header-title-group">
+                  <h3 class="reports-title">Reports & Export Center</h3>
+                  <p class="reports-subtitle">Generate, review and export attendance reports.</p>
+                </div>
+                <div class="reports-date-indicator" id="reportsDateIndicator">Today</div>
+              </div>
 
-             <!-- Filters -->
+              <!-- Scope Indicator for Division Admin -->
+              <div id="divisionAdminReportsScopeIndicator" style="display:none; margin-bottom: var(--space-4);"></div>
+
+              <!-- Filters -->
              <div class="reports-filters-card">
                <div class="reports-filter-row">
                  <div class="reports-filter-group">
@@ -730,7 +1103,14 @@
 
                <div class="reports-filter-row">
                  <div class="reports-filter-group">
-                   <label class="reports-filter-label" for="reportsDeptFilter">Department</label>
+                   <label class="reports-filter-label">Population</label>
+                   <div class="population-toggle" id="reportsPopulationToggle">
+                     <button type="button" class="population-toggle-btn active" data-population="students">Students</button>
+                     <button type="button" class="population-toggle-btn" data-population="staff">Staff</button>
+                   </div>
+                 </div>
+                 <div class="reports-filter-group">
+                    <label class="reports-filter-label" for="reportsDeptFilter">Department</label>
                    <select id="reportsDeptFilter" class="form-input" style="width:auto;">
                      <option value="">Loading departments...</option>
                    </select>

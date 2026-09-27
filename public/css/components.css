@@ -467,6 +467,41 @@ select.form-input option:hover {
   background: rgba(245, 245, 220, 0.03);
 }
 
+.form-input[data-scope-fixed="true"] {
+  background: rgba(200, 166, 70, 0.08);
+  border-color: var(--color-accent);
+  color: var(--text-primary);
+  cursor: not-allowed;
+}
+
+.form-input[data-scope-fixed="true"]:hover {
+  border-color: var(--color-accent);
+}
+
+.form-input[data-scope-fixed="true"]::placeholder {
+  color: var(--color-accent);
+  opacity: 0.7;
+}
+
+.scope-fixed-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-accent);
+  margin-top: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: rgba(200, 166, 70, 0.1);
+  border-radius: var(--border-radius-sm);
+  border: 1px solid rgba(200, 166, 70, 0.2);
+}
+
+.scope-fixed-indicator svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
 .form-input-error {
   border-color: var(--color-danger);
 }
@@ -832,6 +867,24 @@ select.form-input option:hover {
 
 .hidden { display: none !important; }
 .sr-only {
+
+.scope-indicator-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-accent);
+  background: rgba(200, 166, 70, 0.1);
+  border: 1px solid rgba(200, 166, 70, 0.3);
+  border-radius: var(--border-radius-md);
+  margin-bottom: var(--space-3);
+}
+
+.scope-indicator-badge svg {
+  flex-shrink: 0;
+}
   position: absolute;
   width: 1px;
   height: 1px;
