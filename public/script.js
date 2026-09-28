@@ -971,6 +971,52 @@ clearRegisterForm();
     }
   }
 
+// Latest Staff face detection, produced by Scan Face and consumed by Register
+// Staff. The general/Student scanner (scanFace) and its #video element are
+// deliberately untouched.
+let staffFaceDetection = null;
+
+async function scanStaffFace() {
+  const staffVideo = document.getElementById('staffVideo');
+
+  if (!staffVideo || !staffVideo.srcObject) {
+    return showStatus('Start Camera first, then Scan', 'error');
+  }
+  if (!staffVideo.videoWidth || staffVideo.readyState < 2) {
+    return showStatus('Video not ready - click Start Camera first', 'error');
+  }
+
+  const scanBtn = document.getElementById('staffScanBtn');
+  try {
+    if (scanBtn) {
+      scanBtn.disabled = true;
+      scanBtn.textContent = 'Scanning...';
+    }
+    showStatus('Looking for face...', 'info');
+
+    const detection = await faceapi
+      .detectSingleFace(staffVideo, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+
+    if (!detection) {
+      staffFaceDetection = null;
+      return showStatus('No face detected - try again', 'error');
+    }
+
+    staffFaceDetection = detection;
+    showStatus('Face detected - ready to register', 'success');
+  } catch (e) {
+    staffFaceDetection = null;
+    showStatus('Scan failed: ' + ((e && e.message) || e), 'error');
+  } finally {
+    if (scanBtn) {
+      scanBtn.disabled = false;
+      scanBtn.textContent = 'Scan Face';
+    }
+  }
+}
+
 async function registerStaff() {
   const formData = {
     userId: document.getElementById('regStaffUserId')?.value.trim(),
@@ -985,7 +1031,7 @@ async function registerStaff() {
     return showStatus('Fill Employee ID, Name, Department, Appointment, Status', 'error');
   }
   
-  // REQUIRE CAMERA STARTED FIRST
+  // REQUIRE CAMERA STARTED FIRST (Staff camera is #staffVideo)
   const staffVideo = document.getElementById('staffVideo');
   if (!staffVideo || !staffVideo.srcObject) {
     return showStatus('Start Camera first, then Register', 'error');
@@ -995,7 +1041,11 @@ async function registerStaff() {
     await verifyOfficeLocation();
     showStatus('Scanning face...', 'info');
     
-    const detections = await detectSingleFace();
+    // Reuse the Scan Face result when present; otherwise detect directly so
+    // Register still works on its own.
+    const detections = staffFaceDetection
+      ? [staffFaceDetection]
+      : await detectSingleFace(staffVideo);
     if (!detections?.length) return showStatus('No face detected - try again', 'error');
 
     const tempCanvas = document.createElement('canvas');
@@ -1068,6 +1118,7 @@ function clearRegisterStaffForm() {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  staffFaceDetection = null;
   showStatus('Form cleared', 'info');
 }
 
@@ -1397,12 +1448,15 @@ async function scanFace() {
   }
 }
 
-async function detectSingleFace() {
-  if (!video || !video.videoWidth || video.readyState < 2) {
+// Accepts an explicit video element so the Staff flow can use #staffVideo
+// while the Student flow keeps using the shared #video element.
+async function detectSingleFace(videoEl) {
+  const target = videoEl || video;
+  if (!target || !target.videoWidth || target.readyState < 2) {
     throw new Error('Video not ready - click Start Camera first');
   }
   const detection = await faceapi
-    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+    .detectSingleFace(target, new faceapi.TinyFaceDetectorOptions())
     .withFaceLandmarks()
     .withFaceDescriptor();
   return detection ? [detection] : [];
@@ -1639,7 +1693,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       regBtn: registerFace,
       registerStaffBtn: showStaffRegisterSection,
       staffStartBtn: startStaffCamera,
-      staffScanBtn: registerStaff,
+      staffScanBtn: scanStaffFace,
       registerStaffBtnForm: registerStaff,
       clearStaffBtnForm: clearRegisterStaffForm,
       cancelStaffRegisterBtn: goToStaffSection,

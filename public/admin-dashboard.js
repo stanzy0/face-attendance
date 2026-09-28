@@ -4340,7 +4340,9 @@ confirmOverlay.addEventListener('click', function(e) {
       setupNavigation();
       setupEventListeners();
       setupEmployeeEventListeners();
+      setupStaffEventListeners();
       initAttendance();
+      initAnalytics();
       initReports();
       setupReportButtons();
      setupSignOutButtons();
