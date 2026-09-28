@@ -19,6 +19,40 @@ function isStudentDocument(user) {
   return !isNonStudentRole(getUserRoleValue(user));
 }
 
+// Removes the Firebase Authentication account for a deleted user, if one exists.
+// Students are keyed by employee/service number rather than an Auth UID, so a
+// missing account is the normal case and is not an error. Any other failure is
+// rethrown so the caller never reports a successful deletion.
+async function deleteAuthAccount(uid) {
+  if (!uid) return false;
+  try {
+    await admin.auth().deleteUser(uid);
+    return true;
+  } catch (e) {
+    if (e && e.code === 'auth/user-not-found') return false;
+    throw e;
+  }
+}
+
+// Deletes every attendance record for a user in bounded batches, so a user with
+// a long history cannot exceed Firestore's 500-operation batch limit.
+async function deleteAttendanceForUser(userId) {
+  const attendanceQuery = await db.collection('attendance')
+    .where('userId', '==', userId)
+    .get();
+
+  const docs = attendanceQuery.docs;
+  const batchSize = 450;
+  for (let i = 0; i < docs.length; i += batchSize) {
+    const batch = db.batch();
+    docs.slice(i, i + batchSize).forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
+  }
+  return docs.length;
+}
+
 function cleanEnv(value) {
   return (value || '').replace(/^"|"$/g, '').replace(/\\n/g, '\n');
 }
@@ -371,26 +405,24 @@ module.exports = async (req, res) => {
 
       const employeeUserId = studentData.userId || uid;
 
-      const attendanceQuery = await db.collection('attendance')
-        .where('userId', '==', employeeUserId)
-        .get();
-
-      if (!attendanceQuery.empty) {
-        const attendanceDocs = attendanceQuery.docs;
-        const batchSize = 450;
-        for (let i = 0; i < attendanceDocs.length; i += batchSize) {
-          const batch = db.batch();
-          const chunk = attendanceDocs.slice(i, i + batchSize);
-          chunk.forEach(doc => {
-            batch.delete(doc.ref);
-          });
-          await batch.commit();
-        }
+      // Auth accounts are removed first: if this fails we abort before the
+      // Firestore document is touched, so nothing is half-deleted.
+      const authCandidates = Array.from(new Set([uid, employeeUserId].filter(Boolean)));
+      let authDeleted = 0;
+      for (const candidate of authCandidates) {
+        if (await deleteAuthAccount(candidate)) authDeleted++;
       }
+
+      const attendanceDeleted = await deleteAttendanceForUser(employeeUserId);
 
       await db.collection('users').doc(uid).delete();
 
-      return res.status(200).json({ uid });
+      return res.status(200).json({
+        uid,
+        attendanceDeleted,
+        authDeleted,
+        userDeleted: true
+      });
     } catch (error) {
       console.error('Delete student failed:', error);
       return res.status(500).json({ error: 'Failed to delete student.' });

@@ -15,6 +15,8 @@
     staffData: [],
     // True for so1 / chiefClerk: Students are read-only for these roles.
     studentReadOnly: false,
+    // Authenticated role, used for role-aware dashboard titles.
+    currentRole: null,
      realtimeUnsubscribe: null,
     unsubscribeUsers: null,
     unsubscribeAnalyticsAttendance: null,
@@ -1763,12 +1765,33 @@
   // ============================================
   // AUTH LISTENER
   // ============================================
+  // Only superAdmin manages Division Management / Division Accounts, so only
+  // that role is titled SUPER ADMIN DASHBOARD. Every other authenticated role
+  // uses the generic administrative title. Derived from the role only -
+  // never from email, UID, name or how the account was created.
+  function getDashboardTitleForRole(role) {
+    if (role === 'superAdmin') return 'SUPER ADMIN DASHBOARD';
+    if (role === 'student') return 'STUDENT DASHBOARD';
+    return 'ADMIN DASHBOARD';
+  }
+
   async function loadUserRoleUI() {
     var role = null;
     try {
       role = await window.getCurrentUserRole?.();
     } catch (e) {
       console.error('Failed to load user role', e);
+    }
+
+    state.currentRole = role;
+
+    // Apply the role-aware dashboard title while the Overview is showing.
+    var dashboardSection = document.getElementById('section-dashboard');
+    var isOnDashboard = !dashboardSection ||
+      (!dashboardSection.hasAttribute('hidden') && !dashboardSection.classList.contains('hidden'));
+    if (isOnDashboard) {
+      var pageTitle = document.getElementById('adminPageTitle');
+      if (pageTitle) pageTitle.textContent = getDashboardTitleForRole(role);
     }
 
     var divisionAccountsNav = document.querySelector('.admin-nav-superadmin-only');
@@ -1921,7 +1944,10 @@
         // Update header
         var titleEl = document.getElementById('adminPageTitle');
         var subtitleEl = document.getElementById('adminPageSubtitle');
-        if (titleEl && titles[sectionId]) titleEl.textContent = titles[sectionId];
+        var headerTitle = sectionId === 'dashboard'
+          ? getDashboardTitleForRole(state.currentRole)
+          : titles[sectionId];
+        if (titleEl && headerTitle) titleEl.textContent = headerTitle;
         if (subtitleEl && subtitles[sectionId]) subtitleEl.textContent = subtitles[sectionId];
 
         // Close mobile drawer
@@ -4003,12 +4029,6 @@ confirmOverlay.addEventListener('click', function(e) {
       return;
     }
 
-    var db = getDb();
-    if (!db) {
-      showStatus('Database not ready. Please refresh.', 'error');
-      return;
-    }
-
     var firestoreDocId = currentDeleteEmployee.id;
     var employeeUserId = currentDeleteEmployee.userId || currentDeleteEmployee.id;
     var employeeName = getUserName(currentDeleteEmployee) || '--';
@@ -4029,36 +4049,19 @@ confirmOverlay.addEventListener('click', function(e) {
         confirmBtn.textContent = 'Deleting...';
       }
 
-      // Step 1: Find and delete all attendance records for this employee
-      var attendanceQuery = await db.collection('attendance')
-        .where('userId', '==', employeeUserId)
-        .get();
+      // Deletion runs server-side so the Firebase Authentication account is
+      // removed too, and so the caller's role and Division Admin scope are
+      // enforced by the API rather than by the browser.
+      var deleteResult = await apiDeleteStudent(firestoreDocId);
+      attendanceDeletedCount = deleteResult.attendanceDeleted || 0;
 
-      if (!attendanceQuery.empty) {
-        // Delete in batches to avoid Firestore batch limit (500)
-        var attendanceDocs = attendanceQuery.docs;
-        var batchSize = 450;
-        for (var i = 0; i < attendanceDocs.length; i += batchSize) {
-          var batch = db.batch();
-          var chunk = attendanceDocs.slice(i, i + batchSize);
-          chunk.forEach(function(doc) {
-            batch.delete(doc.ref);
-          });
-          await batch.commit();
-          attendanceDeletedCount += chunk.length;
-        }
-      }
-
-      // Step 2: Delete the employee document from users collection
-      await db.collection('users').doc(firestoreDocId).delete();
-
-      // Step 3: Invalidate cache
+      // Step 2: Invalidate cache
       if (typeof invalidateUsersCache === 'function') {
         invalidateUsersCache();
       }
 
       deleteSuccess = true;
-      console.log('Deleted employee: ' + employeeName + ' (' + employeeUserId + '), attendance records: ' + attendanceDeletedCount);
+      console.log('Deleted employee: ' + employeeName + ' (' + employeeUserId + '), attendance records: ' + attendanceDeletedCount + ', auth accounts removed: ' + (deleteResult.authDeleted || 0));
     } catch (e) {
       console.error('Delete employee failed:', e);
 
@@ -7153,7 +7156,6 @@ async function generateReportsReport() {
   setupNavigation = function() {
     originalSetupNavigation();
     var titles = {
-      dashboard: 'Super Admin Dashboard',
       analytics: 'Analytics',
       attendance: 'Attendance',
       employees: 'Students',
@@ -7178,9 +7180,14 @@ async function generateReportsReport() {
         var sectionId = this.getAttribute('data-section');
         if (!sectionId) return;
 
-        if (titles[sectionId]) {
+        // The Overview title depends on the authenticated role, so it is
+        // resolved on every navigation rather than baked into the map.
+        var sectionTitle = sectionId === 'dashboard'
+          ? getDashboardTitleForRole(state.currentRole)
+          : titles[sectionId];
+        if (sectionTitle) {
           var titleEl = document.getElementById('adminPageTitle');
-          if (titleEl) titleEl.textContent = titles[sectionId];
+          if (titleEl) titleEl.textContent = sectionTitle;
         }
         if (subtitles[sectionId]) {
           var subtitleEl = document.getElementById('adminPageSubtitle');
